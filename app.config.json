@@ -1,0 +1,36 @@
+{
+  "environmentUrl": "https://ywo11236.apps.dynatrace.com",
+  "build": {
+    "index": "ui/index.html",
+    "sourceRoot": "./"
+  },
+  "app": {
+    "id": "my.user.session.analytics",
+    "name": "User Session Analytics",
+    "version": "2.0.8",
+    "icon": "./icon.svg",
+    "description": "User session analytics dashboard powered by Dynatrace Gen 3 Grail data",
+    "scopes": [
+      {
+        "name": "storage:buckets:read",
+        "comment": "Required alongside table permissions to access Grail bucket data"
+      },
+      {
+        "name": "storage:user.events:read",
+        "comment": "Read user.events for page views, interactions, and navigation data"
+      },
+      {
+        "name": "storage:user.sessions:read",
+        "comment": "Read user.sessions for session-level analytics"
+      },
+      {
+        "name": "storage:metrics:read",
+        "comment": "Read metrics from Grail"
+      },
+      {
+        "name": "storage:entities:read",
+        "comment": "Read RUM application entities for auto-discovery"
+      }
+    ]
+  }
+}
