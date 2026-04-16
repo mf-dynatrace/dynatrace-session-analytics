@@ -52,6 +52,17 @@ function eventAppFilter(appId: string): string {
   return `| filter dt.rum.application.entity == "${appId}"\n`;
 }
 
+// ── Helper: convert timeframe string to DQL from/to clause ────────────────────
+// Preset: "24h" → 'from:now()-24h'
+// Custom: "custom:2026-04-01T00:00:00Z/2026-04-15T23:59:59Z" → 'from:"2026-04-01T00:00:00Z", to:"2026-04-15T23:59:59Z"'
+function timeframeClause(timeframe: string): string {
+  if (timeframe.startsWith("custom:")) {
+    const [from, to] = timeframe.slice(7).split("/");
+    return `from:"${from}", to:"${to}"`;
+  }
+  return `from:now()-${timeframe}`;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // OVERVIEW / HOME
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -64,7 +75,7 @@ function eventAppFilter(appId: string): string {
  */
 export function overviewKPIs(appId: string, timeframe: string): string {
   return `
-fetch user.events, from:now()-${timeframe}
+fetch user.events, ${timeframeClause(timeframe)}
 ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
 | summarize
     navCount     = count(),
@@ -85,7 +96,7 @@ ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
 /** Page views count from user.events (kept for backward compat) */
 export function overviewPageViews(appId: string, timeframe: string): string {
   return `
-fetch user.events, from:now()-${timeframe}
+fetch user.events, ${timeframeClause(timeframe)}
 ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
 | summarize pageViews = count()
   `.trim();
@@ -95,7 +106,7 @@ ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
 export function sessionsOverTime(appId: string, timeframe: string): string {
   const interval = timeframeToBucket(timeframe);
   return `
-fetch user.events, from:now()-${timeframe}
+fetch user.events, ${timeframeClause(timeframe)}
 ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
 | makeTimeseries sessions = countDistinct(dt.rum.session.id), interval:${interval}
   `.trim();
@@ -105,7 +116,7 @@ ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
 export function usersOverTime(appId: string, timeframe: string): string {
   const interval = timeframeToBucket(timeframe);
   return `
-fetch user.events, from:now()-${timeframe}
+fetch user.events, ${timeframeClause(timeframe)}
 ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
 | makeTimeseries users = countDistinct(dt.rum.instance.id), interval:${interval}
   `.trim();
@@ -115,7 +126,7 @@ ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
 export function pageViewsOverTime(appId: string, timeframe: string): string {
   const interval = timeframeToBucket(timeframe);
   return `
-fetch user.events, from:now()-${timeframe}
+fetch user.events, ${timeframeClause(timeframe)}
 ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
 | makeTimeseries pageViews = count(), interval:${interval}
   `.trim();
@@ -180,7 +191,7 @@ ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
  */
 export function acquisitionByChannel(appId: string, timeframe: string): string {
   return `
-fetch user.events, from:now()-${timeframe}
+fetch user.events, ${timeframeClause(timeframe)}
 ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
 | summarize
     firstRefDomain = first(page.source.url.domain),
@@ -200,7 +211,7 @@ ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
 /** Traffic by source (referrer domain from user.events) */
 export function acquisitionBySource(appId: string, timeframe: string): string {
   return `
-fetch user.events, from:now()-${timeframe}
+fetch user.events, ${timeframeClause(timeframe)}
 ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
 | summarize
     refDomain = first(page.source.url.domain),
@@ -219,7 +230,7 @@ ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
  */
 export function acquisitionNewVsReturning(appId: string, timeframe: string): string {
   return `
-fetch user.sessions, from:now()-${timeframe}
+fetch user.sessions, ${timeframeClause(timeframe)}
 ${sessionAppFilter(appId)}| filter isNotNull(device.type)
 | summarize
     sessions    = count(),
@@ -233,7 +244,7 @@ ${sessionAppFilter(appId)}| filter isNotNull(device.type)
 export function acquisitionOverTime(appId: string, timeframe: string): string {
   const interval = timeframeToBucket(timeframe);
   return `
-fetch user.events, from:now()-${timeframe}
+fetch user.events, ${timeframeClause(timeframe)}
 ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
 | fieldsAdd channel = if(isNull(page.source.url.domain) or page.source.url.domain == "", "Direct",
     else: if(contains(page.source.url.domain, "google") or contains(page.source.url.domain, "bing"), "Organic Search",
@@ -250,7 +261,7 @@ ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
 /** Top pages by views */
 export function engagementTopPages(appId: string, timeframe: string): string {
   return `
-fetch user.events, from:now()-${timeframe}
+fetch user.events, ${timeframeClause(timeframe)}
 ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
 | filter isNotNull(page.url.path)
 | summarize
@@ -269,7 +280,7 @@ ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
  */
 export function engagementSessionDuration(appId: string, timeframe: string): string {
   return `
-fetch user.sessions, from:now()-${timeframe}
+fetch user.sessions, ${timeframeClause(timeframe)}
 ${sessionAppFilter(appId)}
 | fieldsAdd durationSec = toDouble(duration) / 1000000000.0
 | fieldsAdd durationBucket = if(durationSec < 10, "0-10s",
@@ -287,7 +298,7 @@ ${sessionAppFilter(appId)}
 /** Pages per session distribution */
 export function engagementPagesPerSession(appId: string, timeframe: string): string {
   return `
-fetch user.sessions, from:now()-${timeframe}
+fetch user.sessions, ${timeframeClause(timeframe)}
 ${sessionAppFilter(appId)}
 | fieldsAdd pageBucket = if(navigation_count <= 1, "1",
     else: if(navigation_count <= 3, "2-3",
@@ -302,7 +313,7 @@ ${sessionAppFilter(appId)}
 /** User engagement events (non-navigation) */
 export function engagementEvents(appId: string, timeframe: string): string {
   return `
-fetch user.events, from:now()-${timeframe}
+fetch user.events, ${timeframeClause(timeframe)}
 ${eventAppFilter(appId)}| filter characteristics.classifier == "user_interaction" or characteristics.classifier == "user_action"
 | summarize eventCount = count(), users = countDistinct(dt.rum.instance.id), by: { characteristics.classifier }
 | sort eventCount desc
@@ -313,7 +324,7 @@ ${eventAppFilter(appId)}| filter characteristics.classifier == "user_interaction
 /** Landing pages (first page of session) */
 export function engagementLandingPages(appId: string, timeframe: string): string {
   return `
-fetch user.events, from:now()-${timeframe}
+fetch user.events, ${timeframeClause(timeframe)}
 ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
 | filter isNotNull(page.url.path)
 | sort start_time asc
@@ -331,7 +342,7 @@ ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
 /** Browser breakdown */
 export function techBrowsers(appId: string, timeframe: string): string {
   return `
-fetch user.sessions, from:now()-${timeframe}
+fetch user.sessions, ${timeframeClause(timeframe)}
 ${sessionAppFilter(appId)}
 | filter isNotNull(browser.name)
 | summarize
@@ -346,7 +357,7 @@ ${sessionAppFilter(appId)}
 /** Operating system breakdown */
 export function techOS(appId: string, timeframe: string): string {
   return `
-fetch user.sessions, from:now()-${timeframe}
+fetch user.sessions, ${timeframeClause(timeframe)}
 ${sessionAppFilter(appId)}
 | filter isNotNull(os.name)
 | summarize
@@ -361,7 +372,7 @@ ${sessionAppFilter(appId)}
 /** Device type breakdown (desktop, mobile) */
 export function techDevices(appId: string, timeframe: string): string {
   return `
-fetch user.sessions, from:now()-${timeframe}
+fetch user.sessions, ${timeframeClause(timeframe)}
 ${sessionAppFilter(appId)}
 | filter isNotNull(device.type)
 | summarize
@@ -378,7 +389,7 @@ ${sessionAppFilter(appId)}
  */
 export function techScreenResolutions(appId: string, timeframe: string): string {
   return `
-fetch user.sessions, from:now()-${timeframe}
+fetch user.sessions, ${timeframeClause(timeframe)}
 ${sessionAppFilter(appId)}
 | filter isNotNull(device.screen.width) and isNotNull(device.screen.height)
 | fieldsAdd resolution = concat(toString(device.screen.width), "x", toString(device.screen.height))
@@ -394,7 +405,7 @@ ${sessionAppFilter(appId)}
  */
 export function geoByCountry(appId: string, timeframe: string): string {
   return `
-fetch user.sessions, from:now()-${timeframe}
+fetch user.sessions, ${timeframeClause(timeframe)}
 ${sessionAppFilter(appId)}
 | filter isNotNull(geo.country.iso_code)
 | summarize
@@ -413,7 +424,7 @@ ${sessionAppFilter(appId)}
  */
 export function geoByCity(appId: string, timeframe: string): string {
   return `
-fetch user.sessions, from:now()-${timeframe}
+fetch user.sessions, ${timeframeClause(timeframe)}
 ${sessionAppFilter(appId)}
 | filter isNotNull(client.isp)
 | summarize
@@ -677,7 +688,7 @@ function marketingExcludeFilter(exclude: boolean): string {
 /** Error KPIs: total errors, affected sessions, affected users */
 export function errorsKPIs(appId: string, timeframe: string, excludeMarketing = false): string {
   return `
-fetch user.events, from:now()-${timeframe}
+fetch user.events, ${timeframeClause(timeframe)}
 ${eventAppFilter(appId)}| filter characteristics.classifier == "error"
 ${marketingExcludeFilter(excludeMarketing)}| summarize
     totalErrors     = count(),
@@ -690,7 +701,7 @@ ${marketingExcludeFilter(excludeMarketing)}| summarize
 export function errorsOverTime(appId: string, timeframe: string, excludeMarketing = false): string {
   const interval = timeframeToBucket(timeframe);
   return `
-fetch user.events, from:now()-${timeframe}
+fetch user.events, ${timeframeClause(timeframe)}
 ${eventAppFilter(appId)}| filter characteristics.classifier == "error"
 ${marketingExcludeFilter(excludeMarketing)}| makeTimeseries errors = count(), interval:${interval}
   `.trim();
@@ -699,7 +710,7 @@ ${marketingExcludeFilter(excludeMarketing)}| makeTimeseries errors = count(), in
 /** Top error messages */
 export function errorsTopMessages(appId: string, timeframe: string, excludeMarketing = false): string {
   return `
-fetch user.events, from:now()-${timeframe}
+fetch user.events, ${timeframeClause(timeframe)}
 ${eventAppFilter(appId)}| filter characteristics.classifier == "error"
 | filter isNotNull(error.display_name)
 ${marketingExcludeFilter(excludeMarketing)}| fieldsAdd error.display_name = if(contains(error.display_name, ".js:"), concat(arrayElement(splitString(error.display_name, ".js:"), 0), ".js"), else: error.display_name)
@@ -715,7 +726,7 @@ ${marketingExcludeFilter(excludeMarketing)}| fieldsAdd error.display_name = if(c
 /** Error types breakdown (type + source) */
 export function errorsByType(appId: string, timeframe: string, excludeMarketing = false): string {
   return `
-fetch user.events, from:now()-${timeframe}
+fetch user.events, ${timeframeClause(timeframe)}
 ${eventAppFilter(appId)}| filter characteristics.classifier == "error"
 ${marketingExcludeFilter(excludeMarketing)}| summarize
     errors   = count(),
@@ -731,7 +742,7 @@ export function errorTypeDetail(appId: string, timeframe: string, errType: strin
     ? `| filter error.source == "${errSource}"`
     : `| filter isNull(error.source)`;
   return `
-fetch user.events, from:now()-${timeframe}
+fetch user.events, ${timeframeClause(timeframe)}
 ${eventAppFilter(appId)}| filter characteristics.classifier == "error"
 | filter error.type == "${errType}"
 ${sourceFilter}
@@ -748,7 +759,7 @@ ${marketingExcludeFilter(excludeMarketing)}| summarize
 /** Errors by page */
 export function errorsByPage(appId: string, timeframe: string, excludeMarketing = false): string {
   return `
-fetch user.events, from:now()-${timeframe}
+fetch user.events, ${timeframeClause(timeframe)}
 ${eventAppFilter(appId)}| filter characteristics.classifier == "error"
 | filter isNotNull(page.url.path)
 ${marketingExcludeFilter(excludeMarketing)}| summarize
@@ -763,7 +774,7 @@ ${marketingExcludeFilter(excludeMarketing)}| summarize
 /** Page load duration distribution */
 export function pageLoadDistribution(appId: string, timeframe: string): string {
   return `
-fetch user.events, from:now()-${timeframe}
+fetch user.events, ${timeframeClause(timeframe)}
 ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
 | filter isNotNull(performance.load_event_end)
 | fieldsAdd loadSec = toLong(performance.load_event_end) / 1000000000
@@ -786,7 +797,7 @@ ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
 /** Top page flows: from → to transitions */
 export function journeyPageFlows(appId: string, timeframe: string): string {
   return `
-fetch user.events, from:now()-${timeframe}
+fetch user.events, ${timeframeClause(timeframe)}
 ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
 | filter isNotNull(page.url.path)
 | sort start_time asc
@@ -804,7 +815,7 @@ ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
 /** Sankey session-level page arrays: one row per session with ordered page paths */
 export function journeySankeyFlows(appId: string, timeframe: string, maxSteps: number = 5): string {
   return `
-fetch user.events, from:now()-${timeframe}
+fetch user.events, ${timeframeClause(timeframe)}
 ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
 | filter isNotNull(page.url.path)
 | limit 200000
@@ -821,7 +832,7 @@ ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
 /** Exit pages: last page before session ends */
 export function journeyExitPages(appId: string, timeframe: string): string {
   return `
-fetch user.events, from:now()-${timeframe}
+fetch user.events, ${timeframeClause(timeframe)}
 ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
 | filter isNotNull(page.url.path)
 | sort start_time desc
@@ -835,7 +846,7 @@ ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
 /** Top complete paths (first 3 pages of each session) */
 export function journeyTopPaths(appId: string, timeframe: string): string {
   return `
-fetch user.events, from:now()-${timeframe}
+fetch user.events, ${timeframeClause(timeframe)}
 ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
 | filter isNotNull(page.url.path)
 | sort start_time asc
@@ -861,7 +872,7 @@ ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
 /** Session list with key dimensions */
 export function sessionList(appId: string, timeframe: string): string {
   return `
-fetch user.events, from:now()-${timeframe}
+fetch user.events, ${timeframeClause(timeframe)}
 ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
 | summarize
     pageViews  = count(),
@@ -884,7 +895,7 @@ ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
 /** Core Web Vitals averages and p75 */
 export function webVitalsKPIs(appId: string, timeframe: string): string {
   return `
-fetch user.events, from:now()-${timeframe}
+fetch user.events, ${timeframeClause(timeframe)}
 ${eventAppFilter(appId)}| filter isNotNull(web_vitals.time_to_first_byte) or isNotNull(web_vitals.largest_contentful_paint) or isNotNull(web_vitals.cumulative_layout_shift) or isNotNull(web_vitals.interaction_to_next_paint) or isNotNull(web_vitals.first_contentful_paint)
 | summarize
     ttfb_avg  = avg(toDouble(web_vitals.time_to_first_byte) / 1000000.0),
@@ -913,7 +924,7 @@ export function webVitalsOverTime(appId: string, timeframe: string, metric: stri
   };
   const m = metricMap[metric] ?? metricMap["lcp"];
   return `
-fetch user.events, from:now()-${timeframe}
+fetch user.events, ${timeframeClause(timeframe)}
 ${eventAppFilter(appId)}| filter isNotNull(${m.field})
 | makeTimeseries ${m.alias} = percentile(toDouble(${m.field})${m.divisor}, 75), interval:${interval}
   `.trim();
@@ -922,7 +933,7 @@ ${eventAppFilter(appId)}| filter isNotNull(${m.field})
 /** Web vitals by page */
 export function webVitalsByPage(appId: string, timeframe: string): string {
   return `
-fetch user.events, from:now()-${timeframe}
+fetch user.events, ${timeframeClause(timeframe)}
 ${eventAppFilter(appId)}| filter isNotNull(web_vitals.largest_contentful_paint) and isNotNull(page.url.path)
 | summarize
     lcp_p75 = percentile(toDouble(web_vitals.largest_contentful_paint) / 1000000.0, 75),
@@ -938,7 +949,7 @@ ${eventAppFilter(appId)}| filter isNotNull(web_vitals.largest_contentful_paint) 
 /** Pages failing Core Web Vitals thresholds (high traffic, actionable) */
 export function webVitalsFailingPages(appId: string, timeframe: string): string {
   return `
-fetch user.events, from:now()-${timeframe}
+fetch user.events, ${timeframeClause(timeframe)}
 ${eventAppFilter(appId)}| filter characteristics.classifier == "view_summary"
 | filter isNotNull(device.type)
 | summarize
@@ -973,7 +984,7 @@ ${eventAppFilter(appId)}| filter characteristics.classifier == "view_summary"
 export function retentionDailyVisitors(appId: string, timeframe: string): string {
   const interval = timeframeToBucket(timeframe);
   return `
-fetch user.events, from:now()-${timeframe}
+fetch user.events, ${timeframeClause(timeframe)}
 ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
 | makeTimeseries
     totalUsers    = countDistinct(dt.rum.instance.id),
@@ -984,7 +995,7 @@ ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
 /** Session frequency: how many sessions per user */
 export function retentionSessionFrequency(appId: string, timeframe: string): string {
   return `
-fetch user.events, from:now()-${timeframe}
+fetch user.events, ${timeframeClause(timeframe)}
 ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
 | summarize sessions = countDistinct(dt.rum.session.id), by: { dt.rum.instance.id }
 | fieldsAdd freqBucket = if(sessions == 1, "1 session",
@@ -1000,7 +1011,7 @@ ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
 /** New vs returning visitors */
 export function retentionNewVsReturning(appId: string, timeframe: string): string {
   return `
-fetch user.events, from:now()-${timeframe}
+fetch user.events, ${timeframeClause(timeframe)}
 ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
 | summarize sessions = countDistinct(dt.rum.session.id), by: { dt.rum.instance.id }
 | fieldsAdd visitorType = if(sessions == 1, "New visitor", else: "Returning visitor")
@@ -1015,7 +1026,7 @@ ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
 /** Page depth funnel: sessions reaching N pages */
 export function conversionPageDepthFunnel(appId: string, timeframe: string): string {
   return `
-fetch user.events, from:now()-${timeframe}
+fetch user.events, ${timeframeClause(timeframe)}
 ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
 | summarize pageViews = count(), by: { dt.rum.session.id }
 | summarize
@@ -1030,7 +1041,7 @@ ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
 /** Top conversion pages (pages that tend to be deeper in sessions) */
 export function conversionGoalPages(appId: string, timeframe: string): string {
   return `
-fetch user.events, from:now()-${timeframe}
+fetch user.events, ${timeframeClause(timeframe)}
 ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
 | filter isNotNull(page.url.path)
 | filter contains(page.url.path, "booking") or contains(page.url.path, "order") or contains(page.url.path, "checkout") or contains(page.url.path, "confirm") or contains(page.url.path, "payment") or contains(page.url.path, "thank") or contains(page.url.path, "success") or contains(page.url.path, "basket") or contains(page.url.path, "cart") or contains(page.url.path, "reserve")
@@ -1047,7 +1058,7 @@ ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
 /** Conversion rate: sessions that reached a "goal" page vs total */
 export function conversionRate(appId: string, timeframe: string): string {
   return `
-fetch user.events, from:now()-${timeframe}
+fetch user.events, ${timeframeClause(timeframe)}
 ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
 | summarize
     hasGoal  = countIf(contains(page.url.path, "booking") or contains(page.url.path, "order") or contains(page.url.path, "checkout") or contains(page.url.path, "confirm") or contains(page.url.path, "payment") or contains(page.url.path, "thank") or contains(page.url.path, "success") or contains(page.url.path, "basket") or contains(page.url.path, "reserve")),
@@ -1056,6 +1067,138 @@ ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
     totalSessions = count(),
     convertedSessions = countIf(hasGoal > 0)
 | fieldsAdd conversionRate = toDouble(convertedSessions) / toDouble(totalSessions) * 100.0
+  `.trim();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// UTM CAMPAIGNS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * UTM parameter extraction helper.
+ * Extracts a named query parameter from page.url.full using string functions.
+ * DQL doesn't have a native URL parse, so we use splitString + contains.
+ *
+ * Strategy: split URL on "?" to get query string, then split on "&" to get
+ * individual params, and use contains to find e.g. "utm_source=".
+ * Since DQL can't iterate arrays dynamically, we use a simpler approach:
+ * extract the substring after "utm_source=" up to the next "&" or end.
+ */
+
+// DQL expression that extracts a UTM param value from the full URL.
+// Usage: substitute PARAM_NAME with utm_source, utm_medium, etc.
+// Splits on & then # then ? to handle fragment-based URLs (e.g. path#/...?utm_source=meta)
+function utmExtract(param: string): string {
+  return `if(contains(coalesce(page.url.full, ""), "${param}="),
+    arrayElement(splitString(arrayElement(splitString(arrayElement(splitString(
+      arrayElement(splitString(coalesce(page.url.full, ""), "${param}="), 1),
+    "&"), 0), "#"), 0), "?"), 0),
+    else: "")`;
+}
+
+/** UTM campaign overview — sessions & users by campaign */
+export function utmByCampaign(appId: string, timeframe: string): string {
+  return `
+fetch user.events, ${timeframeClause(timeframe)}
+${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
+| filter contains(coalesce(page.url.full, ""), "utm_")
+| fieldsAdd utm_campaign = ${utmExtract("utm_campaign")}
+| filter utm_campaign != ""
+| summarize
+    sessions = countDistinct(dt.rum.session.id),
+    users = countDistinct(dt.rum.instance.id),
+    pageViews = count(),
+    by: { utm_campaign }
+| sort sessions desc
+| limit 25
+  `.trim();
+}
+
+/** UTM source/medium breakdown */
+export function utmBySourceMedium(appId: string, timeframe: string): string {
+  return `
+fetch user.events, ${timeframeClause(timeframe)}
+${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
+| filter contains(coalesce(page.url.full, ""), "utm_")
+| fieldsAdd
+    utm_source = ${utmExtract("utm_source")},
+    utm_medium = ${utmExtract("utm_medium")}
+| filter utm_source != "" or utm_medium != ""
+| fieldsAdd
+    source = if(utm_source == "", "(not set)", else: utm_source),
+    medium = if(utm_medium == "", "(not set)", else: utm_medium)
+| summarize
+    sessions = countDistinct(dt.rum.session.id),
+    users = countDistinct(dt.rum.instance.id),
+    by: { source, medium }
+| sort sessions desc
+| limit 25
+  `.trim();
+}
+
+/** UTM sessions over time — trend by campaign */
+export function utmOverTime(appId: string, timeframe: string): string {
+  const interval = timeframeToBucket(timeframe);
+  return `
+fetch user.events, ${timeframeClause(timeframe)}
+${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
+| filter contains(coalesce(page.url.full, ""), "utm_")
+| makeTimeseries sessions = countDistinct(dt.rum.session.id), interval:${interval}
+  `.trim();
+}
+
+/** UTM content & term breakdown (for A/B testing) */
+export function utmByContentTerm(appId: string, timeframe: string): string {
+  return `
+fetch user.events, ${timeframeClause(timeframe)}
+${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
+| filter contains(coalesce(page.url.full, ""), "utm_")
+| fieldsAdd
+    utm_content = ${utmExtract("utm_content")},
+    utm_term = ${utmExtract("utm_term")}
+| filter utm_content != "" or utm_term != ""
+| fieldsAdd
+    content = if(utm_content == "", "(not set)", else: utm_content),
+    term = if(utm_term == "", "(not set)", else: utm_term)
+| summarize
+    sessions = countDistinct(dt.rum.session.id),
+    by: { content, term }
+| sort sessions desc
+| limit 25
+  `.trim();
+}
+
+/** UTM landing pages — which pages campaign traffic lands on */
+export function utmLandingPages(appId: string, timeframe: string): string {
+  return `
+fetch user.events, ${timeframeClause(timeframe)}
+${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
+| filter contains(coalesce(page.url.full, ""), "utm_")
+| fieldsAdd utm_campaign = ${utmExtract("utm_campaign")}
+| filter utm_campaign != ""
+| sort start_time asc
+| summarize
+    landingPage = first(page.url.path),
+    utm_campaign = first(utm_campaign),
+    by: { dt.rum.session.id }
+| summarize sessions = count(), by: { landingPage, utm_campaign }
+| sort sessions desc
+| limit 25
+  `.trim();
+}
+
+/** UTM summary KPIs — total sessions, users, campaigns with UTM params */
+export function utmSummary(appId: string, timeframe: string): string {
+  return `
+fetch user.events, ${timeframeClause(timeframe)}
+${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
+| filter contains(coalesce(page.url.full, ""), "utm_")
+| fieldsAdd utm_campaign = ${utmExtract("utm_campaign")}
+| summarize
+    sessions = countDistinct(dt.rum.session.id),
+    users = countDistinct(dt.rum.instance.id),
+    pageViews = count(),
+    campaigns = countDistinct(if(utm_campaign != "", utm_campaign, else: ""))
   `.trim();
 }
 
@@ -1079,6 +1222,16 @@ fetch dt.entity.application, from:now()-24h
 
 /** Map a timeframe string to a sensible chart bucket interval */
 function timeframeToBucket(timeframe: string): string {
+  // Custom range: compute days between from/to
+  if (timeframe.startsWith("custom:")) {
+    const [from, to] = timeframe.slice(7).split("/");
+    const days = (new Date(to).getTime() - new Date(from).getTime()) / 86_400_000;
+    if (days <= 0.125)  return "1m";   // ≤3 hours
+    if (days <= 0.5)    return "15m";  // ≤12 hours
+    if (days <= 1)      return "1h";
+    if (days <= 7)      return "6h";
+    return "1d";
+  }
   const tf = timeframe.toLowerCase();
   if (tf === "30m" || tf === "1h")  return "1m";
   if (tf === "2h")                  return "5m";

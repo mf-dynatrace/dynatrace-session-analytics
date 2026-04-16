@@ -27,11 +27,12 @@ import { SessionExplorerPage } from "./pages/SessionExplorerPage";
 import { WebVitalsPage }     from "./pages/WebVitalsPage";
 import { RetentionPage }     from "./pages/RetentionPage";
 import { ConversionsPage }   from "./pages/ConversionsPage";
+import { UTMPage }           from "./pages/UTMPage";
 
 // ── Navigation items ──────────────────────────────────────────────────────────
 
 type PageId = "overview" | "realtime" | "acquisition" | "engagement" | "tech"
-  | "errors" | "journeys" | "sessions" | "vitals" | "retention" | "conversions";
+  | "errors" | "journeys" | "sessions" | "vitals" | "retention" | "conversions" | "utm";
 
 interface NavItem {
   id:    PageId;
@@ -106,6 +107,13 @@ const NAV_ITEMS: NavItem[] = [
     section: "Insights",
   },
   {
+    id: "utm",
+    label: "UTM Campaigns",
+    // Megaphone/campaign icon
+    icon: "M18 11v2h4v-2h-4zm-2 6.61c.96.71 2.21 1.65 3.2 2.39.4-.53.8-1.07 1.2-1.6-.99-.74-2.24-1.68-3.2-2.4-.4.54-.8 1.08-1.2 1.61zM20.4 5.6c-.4-.53-.8-1.07-1.2-1.6-.99.74-2.24 1.68-3.2 2.4.4.53.8 1.07 1.2 1.6.96-.72 2.21-1.65 3.2-2.4zM4 9c-1.1 0-2 .9-2 2v2c0 1.1.9 2 2 2h1l5 3V6L5 9H4zm11.5 3c0-1.33-.58-2.53-1.5-3.35v6.69c.92-.81 1.5-2.01 1.5-3.34z",
+    section: "Insights",
+  },
+  {
     id: "retention",
     label: "Retention",
     // People/group icon
@@ -146,6 +154,13 @@ export function App() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [sidebarHover, setSidebarHover] = useState<string | null>(null);
 
+  // Custom date range picker state
+  const [showCustomPicker, setShowCustomPicker] = useState(false);
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+
+  const isCustom = timeframe.startsWith("custom:");
+
   const { apps, loading: appsLoading } = useApplications();
 
   // Auto-select first app when loaded
@@ -156,6 +171,25 @@ export function App() {
   }, [apps, selectedApp]);
 
   const handleRefresh = () => setRefreshKey(k => k + 1);
+
+  const handleCustomApply = () => {
+    if (customFrom && customTo) {
+      const fromISO = new Date(customFrom).toISOString();
+      const toISO   = new Date(customTo + "T23:59:59").toISOString();
+      setTimeframe(`custom:${fromISO}/${toISO}`);
+      setShowCustomPicker(false);
+    }
+  };
+
+  /** Readable label for the active custom range */
+  const customLabel = isCustom
+    ? (() => {
+        const [f, t] = timeframe.slice(7).split("/");
+        const fmt = (iso: string) =>
+          new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+        return `${fmt(f)} – ${fmt(t)}`;
+      })()
+    : "";
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -276,7 +310,7 @@ export function App() {
             fontSize: 11,
             color: "#6d7680",
           }}>
-            User Session Analytics v2.0.8
+            User Session Analytics v2.1.5
             <br />
             Dynatrace Gen 3 Grail
           </div>
@@ -331,11 +365,11 @@ export function App() {
             <div style={{ flex: 1 }} />
 
             {/* Time Range Selector */}
-            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 4, position: "relative" }}>
               {TIME_OPTIONS.map(opt => (
                 <button
                   key={opt.value}
-                  onClick={() => setTimeframe(opt.value)}
+                  onClick={() => { setTimeframe(opt.value); setShowCustomPicker(false); }}
                   style={{
                     padding: "6px 12px",
                     borderRadius: 16,
@@ -356,6 +390,130 @@ export function App() {
                   {opt.label}
                 </button>
               ))}
+
+              {/* Custom range button */}
+              <button
+                onClick={() => setShowCustomPicker(prev => !prev)}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: 16,
+                  border: isCustom
+                    ? `1px solid ${GA4_COLORS.primary}`
+                    : `1px solid transparent`,
+                  background: isCustom ? GA4_COLORS.primaryBg : "transparent",
+                  color: isCustom ? GA4_COLORS.primary : GA4_COLORS.textSecondary,
+                  fontSize: 13,
+                  fontWeight: isCustom ? 500 : 400,
+                  fontFamily: GA4_FONTS.family,
+                  cursor: "pointer",
+                  transition: "all 0.15s",
+                  outline: "none",
+                  whiteSpace: "nowrap",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                }}
+              >
+                <svg width={14} height={14} viewBox="0 0 24 24"
+                  fill={isCustom ? GA4_COLORS.primary : GA4_COLORS.textSecondary}>
+                  <path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM9 10H7v2h2v-2zm4 0h-2v2h2v-2zm4 0h-2v2h2v-2z" />
+                </svg>
+                {isCustom ? customLabel : "Custom"}
+              </button>
+
+              {/* Custom date picker popover */}
+              {showCustomPicker && (
+                <div style={{
+                  position: "absolute",
+                  top: "100%",
+                  right: 0,
+                  marginTop: 8,
+                  background: GA4_COLORS.cardBg,
+                  border: `1px solid ${GA4_COLORS.border}`,
+                  borderRadius: 8,
+                  padding: 16,
+                  zIndex: 100,
+                  boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 12,
+                  minWidth: 260,
+                }}>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: GA4_COLORS.textPrimary }}>
+                    Custom date range
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <label style={{ fontSize: 12, color: GA4_COLORS.textSecondary }}>From</label>
+                    <input
+                      type="date"
+                      value={customFrom}
+                      onChange={e => setCustomFrom(e.target.value)}
+                      style={{
+                        padding: "6px 10px",
+                        borderRadius: 4,
+                        border: `1px solid ${GA4_COLORS.border}`,
+                        background: GA4_COLORS.pageBg,
+                        color: GA4_COLORS.textPrimary,
+                        fontSize: 13,
+                        fontFamily: GA4_FONTS.family,
+                        outline: "none",
+                      }}
+                    />
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <label style={{ fontSize: 12, color: GA4_COLORS.textSecondary }}>To</label>
+                    <input
+                      type="date"
+                      value={customTo}
+                      onChange={e => setCustomTo(e.target.value)}
+                      style={{
+                        padding: "6px 10px",
+                        borderRadius: 4,
+                        border: `1px solid ${GA4_COLORS.border}`,
+                        background: GA4_COLORS.pageBg,
+                        color: GA4_COLORS.textPrimary,
+                        fontSize: 13,
+                        fontFamily: GA4_FONTS.family,
+                        outline: "none",
+                      }}
+                    />
+                  </div>
+                  <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                    <button
+                      onClick={() => setShowCustomPicker(false)}
+                      style={{
+                        padding: "6px 14px",
+                        borderRadius: 4,
+                        border: `1px solid ${GA4_COLORS.border}`,
+                        background: "transparent",
+                        color: GA4_COLORS.textSecondary,
+                        fontSize: 13,
+                        fontFamily: GA4_FONTS.family,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleCustomApply}
+                      disabled={!customFrom || !customTo}
+                      style={{
+                        padding: "6px 14px",
+                        borderRadius: 4,
+                        border: "none",
+                        background: (!customFrom || !customTo) ? "#333" : GA4_COLORS.primary,
+                        color: (!customFrom || !customTo) ? "#666" : "#fff",
+                        fontSize: 13,
+                        fontWeight: 500,
+                        fontFamily: GA4_FONTS.family,
+                        cursor: (!customFrom || !customTo) ? "default" : "pointer",
+                      }}
+                    >
+                      Apply
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Refresh Button */}
@@ -420,6 +578,9 @@ export function App() {
             )}
             {activePage === "conversions" && (
               <ConversionsPage appId={selectedApp} timeframe={timeframe} refreshKey={refreshKey} />
+            )}
+            {activePage === "utm" && (
+              <UTMPage appId={selectedApp} timeframe={timeframe} refreshKey={refreshKey} />
             )}
           </main>
         </div>
