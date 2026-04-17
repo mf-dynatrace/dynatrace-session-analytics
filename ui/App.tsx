@@ -11,9 +11,10 @@
  *   └───────────┴──────────────────────────────────────────────┘
  */
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { GA4_COLORS, GA4_FONTS, GA4_SPACING, GA4_GLOBAL_CSS } from "./styles/ga4Theme";
 import { useApplications, RumApplication } from "./hooks/useApplications";
+import { DynatraceLoader } from "./components/DynatraceLoader";
 
 // Pages
 import { OverviewPage }      from "./pages/OverviewPage";
@@ -159,6 +160,10 @@ export function App() {
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
 
+  // Global loading overlay — shown on refresh, page change, timeframe change
+  const [globalLoading, setGlobalLoading] = useState(false);
+  const loadingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const isCustom = timeframe.startsWith("custom:");
 
   const { apps, loading: appsLoading } = useApplications();
@@ -171,6 +176,14 @@ export function App() {
   }, [apps, selectedApp]);
 
   const handleRefresh = () => setRefreshKey(k => k + 1);
+
+  // Show loading overlay when data-affecting state changes
+  useEffect(() => {
+    setGlobalLoading(true);
+    if (loadingTimer.current) clearTimeout(loadingTimer.current);
+    loadingTimer.current = setTimeout(() => setGlobalLoading(false), 4000);
+    return () => { if (loadingTimer.current) clearTimeout(loadingTimer.current); };
+  }, [refreshKey, activePage, timeframe]);
 
   const handleCustomApply = () => {
     if (customFrom && customTo) {
@@ -310,7 +323,7 @@ export function App() {
             fontSize: 11,
             color: "#6d7680",
           }}>
-            User Session Analytics v2.1.7
+            User Session Analytics v2.1.8
             <br />
             Dynatrace Gen 3 Grail
           </div>
@@ -545,7 +558,9 @@ export function App() {
             flex: 1,
             overflow: "auto",
             padding: GA4_SPACING.cardPadding,
+            position: "relative",
           }}>
+            {globalLoading && <DynatraceLoader />}
             {activePage === "overview" && (
               <OverviewPage appId={selectedApp} timeframe={timeframe} refreshKey={refreshKey} />
             )}
