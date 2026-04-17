@@ -236,8 +236,10 @@ export function App() {
 
   const handleCustomApply = () => {
     if (rangeStart && rangeEnd) {
-      const fromISO = new Date(rangeStart).toISOString();
-      const toISO   = new Date(rangeEnd + "T23:59:59").toISOString();
+      const [sy, sm, sd] = rangeStart.split("-").map(Number);
+      const [ey, em, ed] = rangeEnd.split("-").map(Number);
+      const fromISO = new Date(sy, sm - 1, sd).toISOString();
+      const toISO   = new Date(ey, em - 1, ed, 23, 59, 59).toISOString();
       const tf = `custom:${fromISO}/${toISO}`;
       requestTimeframe(tf);
       setShowCustomPicker(false);
@@ -391,7 +393,7 @@ export function App() {
             fontSize: 11,
             color: "#6d7680",
           }}>
-            User Session Analytics v2.3.4
+            User Session Analytics v2.3.5
             <br />
             Dynatrace Gen 3 Grail
           </div>
@@ -504,8 +506,10 @@ export function App() {
 
               {/* Custom date picker popover — visual calendar */}
               {showCustomPicker && (() => {
+                const pad = (n: number) => String(n).padStart(2, "0");
+                const localDateStr = (dt: Date) => `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
                 const today = new Date(); today.setHours(0,0,0,0);
-                const todayStr = today.toISOString().slice(0, 10);
+                const todayStr = localDateStr(today);
                 const year = calMonth.getFullYear();
                 const month = calMonth.getMonth();
                 const firstDay = new Date(year, month, 1).getDay(); // 0=Sun
@@ -520,17 +524,17 @@ export function App() {
                 const cells: { dateStr: string; day: number; isOutside: boolean }[] = [];
                 for (let i = 0; i < startOffset; i++) {
                   const d = new Date(year, month, -startOffset + i + 1);
-                  cells.push({ dateStr: d.toISOString().slice(0, 10), day: d.getDate(), isOutside: true });
+                  cells.push({ dateStr: localDateStr(d), day: d.getDate(), isOutside: true });
                 }
                 for (let d = 1; d <= daysInMonth; d++) {
                   const dt = new Date(year, month, d);
-                  cells.push({ dateStr: dt.toISOString().slice(0, 10), day: d, isOutside: false });
+                  cells.push({ dateStr: localDateStr(dt), day: d, isOutside: false });
                 }
                 const remaining = 7 - (cells.length % 7);
                 if (remaining < 7) {
                   for (let i = 1; i <= remaining; i++) {
                     const d = new Date(year, month + 1, i);
-                    cells.push({ dateStr: d.toISOString().slice(0, 10), day: d.getDate(), isOutside: true });
+                    cells.push({ dateStr: localDateStr(d), day: d.getDate(), isOutside: true });
                   }
                 }
 
