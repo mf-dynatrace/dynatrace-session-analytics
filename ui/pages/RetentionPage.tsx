@@ -19,9 +19,10 @@ interface RetentionPageProps {
   appId: string;
   timeframe: string;
   refreshKey: number;
+  onLoadEnd?: () => void;
 }
 
-export function RetentionPage({ appId, timeframe, refreshKey }: RetentionPageProps) {
+export function RetentionPage({ appId, timeframe, refreshKey, onLoadEnd }: RetentionPageProps) {
   const [dailyTrend, setDailyTrend] = useState<TimeSeriesPoint[]>([]);
   const [sessionFreq, setSessionFreq] = useState<BarItem[]>([]);
   const [newVsReturn, setNewVsReturn] = useState<{ label: string; value: number }[]>([]);
@@ -61,6 +62,7 @@ export function RetentionPage({ appId, timeframe, refreshKey }: RetentionPagePro
       console.error("[Retention] fetch error:", err);
     } finally {
       setLoading(false);
+      onLoadEnd?.();
     }
   }, [appId, timeframe]);
 

@@ -19,9 +19,10 @@ interface EngagementPageProps {
   appId: string;
   timeframe: string;
   refreshKey: number;
+  onLoadEnd?: () => void;
 }
 
-export function EngagementPage({ appId, timeframe, refreshKey }: EngagementPageProps) {
+export function EngagementPage({ appId, timeframe, refreshKey, onLoadEnd }: EngagementPageProps) {
   const [topPages, setTopPages] = useState<Record<string, unknown>[]>([]);
   const [landingPages, setLandingPages] = useState<Record<string, unknown>[]>([]);
   const [events, setEvents] = useState<Record<string, unknown>[]>([]);
@@ -65,6 +66,7 @@ export function EngagementPage({ appId, timeframe, refreshKey }: EngagementPageP
       console.error("[Engagement] fetch error:", err);
     } finally {
       setLoading(false);
+      onLoadEnd?.();
     }
   }, [appId, timeframe]);
 

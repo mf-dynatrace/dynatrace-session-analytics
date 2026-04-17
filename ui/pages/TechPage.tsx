@@ -18,9 +18,10 @@ interface TechPageProps {
   appId: string;
   timeframe: string;
   refreshKey: number;
+  onLoadEnd?: () => void;
 }
 
-export function TechPage({ appId, timeframe, refreshKey }: TechPageProps) {
+export function TechPage({ appId, timeframe, refreshKey, onLoadEnd }: TechPageProps) {
   const [browsers, setBrowsers] = useState<Record<string, unknown>[]>([]);
   const [osList, setOsList] = useState<Record<string, unknown>[]>([]);
   const [devices, setDevices] = useState<{ label: string; value: number }[]>([]);
@@ -62,6 +63,7 @@ export function TechPage({ appId, timeframe, refreshKey }: TechPageProps) {
       console.error("[Tech] fetch error:", err);
     } finally {
       setLoading(false);
+      onLoadEnd?.();
     }
   }, [appId, timeframe]);
 

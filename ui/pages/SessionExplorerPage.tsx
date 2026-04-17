@@ -17,6 +17,7 @@ interface SessionExplorerPageProps {
   appId: string;
   timeframe: string;
   refreshKey: number;
+  onLoadEnd?: () => void;
 }
 
 function formatDuration(ns: number): string {
@@ -27,7 +28,7 @@ function formatDuration(ns: number): string {
   return `${min}m ${sec}s`;
 }
 
-export function SessionExplorerPage({ appId, timeframe, refreshKey }: SessionExplorerPageProps) {
+export function SessionExplorerPage({ appId, timeframe, refreshKey, onLoadEnd }: SessionExplorerPageProps) {
   const [sessions, setSessions] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -42,6 +43,7 @@ export function SessionExplorerPage({ appId, timeframe, refreshKey }: SessionExp
       console.error("[SessionExplorer] fetch error:", err);
     } finally {
       setLoading(false);
+      onLoadEnd?.();
     }
   }, [appId, timeframe]);
 

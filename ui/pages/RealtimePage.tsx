@@ -19,9 +19,10 @@ import * as Q from "../dql/queries";
 interface RealtimePageProps {
   appId: string;
   refreshKey: number;
+  onLoadEnd?: () => void;
 }
 
-export function RealtimePage({ appId, refreshKey }: RealtimePageProps) {
+export function RealtimePage({ appId, refreshKey, onLoadEnd }: RealtimePageProps) {
   const [activeUsers, setActiveUsers] = useState(0);
   const [activeSessions, setActiveSessions] = useState(0);
   const [pvPerMinute, setPvPerMinute] = useState<TimeSeriesPoint[]>([]);
@@ -62,6 +63,7 @@ export function RealtimePage({ appId, refreshKey }: RealtimePageProps) {
       console.error("[Realtime] fetch error:", err);
     } finally {
       setLoading(false);
+      onLoadEnd?.();
     }
   }, [appId]);
 

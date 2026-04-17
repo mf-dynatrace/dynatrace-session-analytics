@@ -17,6 +17,8 @@ interface WebVitalsPageProps {
   appId: string;
   timeframe: string;
   refreshKey: number;
+  onLoading?: () => void;
+  onLoadEnd?: () => void;
 }
 
 interface VitalKPI {
@@ -42,7 +44,7 @@ function rateLabel(value: number, good: number, poor: number): string {
   return "Needs improvement";
 }
 
-export function WebVitalsPage({ appId, timeframe, refreshKey }: WebVitalsPageProps) {
+export function WebVitalsPage({ appId, timeframe, refreshKey, onLoading, onLoadEnd }: WebVitalsPageProps) {
   const [vitals, setVitals] = useState<VitalKPI[]>([]);
   const [samples, setSamples] = useState(0);
   const [trendData, setTrendData] = useState<TimeSeriesPoint[]>([]);
@@ -83,6 +85,7 @@ export function WebVitalsPage({ appId, timeframe, refreshKey }: WebVitalsPagePro
     } finally {
       setLoading(false);
       setTrendLoading(false);
+      onLoadEnd?.();
     }
   }, [appId, timeframe, selectedMetric]);
 
@@ -96,14 +99,16 @@ export function WebVitalsPage({ appId, timeframe, refreshKey }: WebVitalsPagePro
       console.error("[WebVitals] trend fetch error:", err);
     } finally {
       setTrendLoading(false);
+      onLoadEnd?.();
     }
   }, [appId, timeframe]);
 
   const handleMetricSelect = useCallback((metric: string) => {
     if (metric === selectedMetric) return;
     setSelectedMetric(metric);
+    onLoading?.();
     fetchTrend(metric);
-  }, [selectedMetric, fetchTrend]);
+  }, [selectedMetric, fetchTrend, onLoading]);
 
   useEffect(() => { fetchData(); }, [fetchData, refreshKey]);
 

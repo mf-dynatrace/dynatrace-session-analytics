@@ -18,9 +18,10 @@ interface ConversionsPageProps {
   appId: string;
   timeframe: string;
   refreshKey: number;
+  onLoadEnd?: () => void;
 }
 
-export function ConversionsPage({ appId, timeframe, refreshKey }: ConversionsPageProps) {
+export function ConversionsPage({ appId, timeframe, refreshKey, onLoadEnd }: ConversionsPageProps) {
   const [funnel, setFunnel] = useState<BarItem[]>([]);
   const [goalPages, setGoalPages] = useState<Record<string, unknown>[]>([]);
   const [totalSessions, setTotalSessions] = useState(0);
@@ -60,6 +61,7 @@ export function ConversionsPage({ appId, timeframe, refreshKey }: ConversionsPag
       console.error("[Conversions] fetch error:", err);
     } finally {
       setLoading(false);
+      onLoadEnd?.();
     }
   }, [appId, timeframe]);
 

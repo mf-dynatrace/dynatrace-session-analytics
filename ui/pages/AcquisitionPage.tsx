@@ -19,9 +19,10 @@ interface AcquisitionPageProps {
   appId: string;
   timeframe: string;
   refreshKey: number;
+  onLoadEnd?: () => void;
 }
 
-export function AcquisitionPage({ appId, timeframe, refreshKey }: AcquisitionPageProps) {
+export function AcquisitionPage({ appId, timeframe, refreshKey, onLoadEnd }: AcquisitionPageProps) {
   const [channelData, setChannelData] = useState<Record<string, unknown>[]>([]);
   const [sourceData, setSourceData] = useState<Record<string, unknown>[]>([]);
   const [newVsReturning, setNewVsReturning] = useState<{ label: string; value: number }[]>([]);
@@ -60,6 +61,7 @@ export function AcquisitionPage({ appId, timeframe, refreshKey }: AcquisitionPag
       console.error("[Acquisition] fetch error:", err);
     } finally {
       setLoading(false);
+      onLoadEnd?.();
     }
   }, [appId, timeframe]);
 

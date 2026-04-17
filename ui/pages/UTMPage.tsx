@@ -25,9 +25,10 @@ interface UTMPageProps {
   appId: string;
   timeframe: string;
   refreshKey: number;
+  onLoadEnd?: () => void;
 }
 
-export function UTMPage({ appId, timeframe, refreshKey }: UTMPageProps) {
+export function UTMPage({ appId, timeframe, refreshKey, onLoadEnd }: UTMPageProps) {
   const [summary, setSummary] = useState<Record<string, unknown>>({});
   const [campaigns, setCampaigns] = useState<Record<string, unknown>[]>([]);
   const [sourceMedium, setSourceMedium] = useState<Record<string, unknown>[]>([]);
@@ -74,6 +75,7 @@ export function UTMPage({ appId, timeframe, refreshKey }: UTMPageProps) {
       console.error("[UTM] fetch error:", err);
     } finally {
       setLoading(false);
+      onLoadEnd?.();
     }
   }, [appId, timeframe]);
 

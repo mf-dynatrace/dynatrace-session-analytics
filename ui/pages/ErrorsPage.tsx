@@ -19,9 +19,11 @@ interface ErrorsPageProps {
   appId: string;
   timeframe: string;
   refreshKey: number;
+  onLoading?: () => void;
+  onLoadEnd?: () => void;
 }
 
-export function ErrorsPage({ appId, timeframe, refreshKey }: ErrorsPageProps) {
+export function ErrorsPage({ appId, timeframe, refreshKey, onLoading, onLoadEnd }: ErrorsPageProps) {
   const [totalErrors, setTotalErrors] = useState(0);
   const [affectedSessions, setAffectedSessions] = useState(0);
   const [affectedUsers, setAffectedUsers] = useState(0);
@@ -35,6 +37,7 @@ export function ErrorsPage({ appId, timeframe, refreshKey }: ErrorsPageProps) {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
+    onLoading?.();
     try {
       const results = await executeMultipleDql({
         kpis:     Q.errorsKPIs(appId, timeframe, excludeMarketing),
@@ -81,6 +84,7 @@ export function ErrorsPage({ appId, timeframe, refreshKey }: ErrorsPageProps) {
       console.error("[Errors] fetch error:", err);
     } finally {
       setLoading(false);
+      onLoadEnd?.();
     }
   }, [appId, timeframe, excludeMarketing]);
 

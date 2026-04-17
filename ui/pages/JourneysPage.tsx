@@ -19,9 +19,10 @@ interface JourneysPageProps {
   appId: string;
   timeframe: string;
   refreshKey: number;
+  onLoadEnd?: () => void;
 }
 
-export function JourneysPage({ appId, timeframe, refreshKey }: JourneysPageProps) {
+export function JourneysPage({ appId, timeframe, refreshKey, onLoadEnd }: JourneysPageProps) {
   const [flows, setFlows] = useState<Record<string, unknown>[]>([]);
   const [sankeyData, setSankeyData] = useState<Record<string, unknown>[]>([]);
   const [exitPages, setExitPages] = useState<BarItem[]>([]);
@@ -58,6 +59,7 @@ export function JourneysPage({ appId, timeframe, refreshKey }: JourneysPageProps
     } finally {
       setLoading(false);
       setSankeyLoading(false);
+      onLoadEnd?.();
     }
   }, [appId, timeframe, maxSteps]);
 

@@ -177,13 +177,21 @@ export function App() {
 
   const handleRefresh = () => setRefreshKey(k => k + 1);
 
-  // Show loading overlay when data-affecting state changes
-  useEffect(() => {
+  // Show/hide loading overlay — pages call stopLoading() when data is ready
+  const triggerLoading = () => {
     setGlobalLoading(true);
     if (loadingTimer.current) clearTimeout(loadingTimer.current);
-    loadingTimer.current = setTimeout(() => setGlobalLoading(false), 4000);
+    loadingTimer.current = setTimeout(() => setGlobalLoading(false), 30000); // safety fallback
+  };
+  const stopLoading = () => {
+    setGlobalLoading(false);
+    if (loadingTimer.current) { clearTimeout(loadingTimer.current); loadingTimer.current = null; }
+  };
+
+  useEffect(() => {
+    triggerLoading();
     return () => { if (loadingTimer.current) clearTimeout(loadingTimer.current); };
-  }, [refreshKey, activePage, timeframe]);
+  }, [refreshKey, activePage, timeframe, selectedApp]);
 
   const handleCustomApply = () => {
     if (customFrom && customTo) {
@@ -323,7 +331,7 @@ export function App() {
             fontSize: 11,
             color: "#6d7680",
           }}>
-            User Session Analytics v2.1.8
+            User Session Analytics v2.2.1
             <br />
             Dynatrace Gen 3 Grail
           </div>
@@ -346,7 +354,7 @@ export function App() {
             {/* App Selector */}
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <label style={{ fontSize: 13, color: GA4_COLORS.textSecondary, whiteSpace: "nowrap" }}>
-                Property:
+                Frontend:
               </label>
               <select
                 value={selectedApp}
@@ -562,40 +570,40 @@ export function App() {
           }}>
             {globalLoading && <DynatraceLoader />}
             {activePage === "overview" && (
-              <OverviewPage appId={selectedApp} timeframe={timeframe} refreshKey={refreshKey} />
+              <OverviewPage appId={selectedApp} timeframe={timeframe} refreshKey={refreshKey} onLoadEnd={stopLoading} />
             )}
             {activePage === "realtime" && (
-              <RealtimePage appId={selectedApp} refreshKey={refreshKey} />
+              <RealtimePage appId={selectedApp} refreshKey={refreshKey} onLoadEnd={stopLoading} />
             )}
             {activePage === "acquisition" && (
-              <AcquisitionPage appId={selectedApp} timeframe={timeframe} refreshKey={refreshKey} />
+              <AcquisitionPage appId={selectedApp} timeframe={timeframe} refreshKey={refreshKey} onLoadEnd={stopLoading} />
             )}
             {activePage === "engagement" && (
-              <EngagementPage appId={selectedApp} timeframe={timeframe} refreshKey={refreshKey} />
+              <EngagementPage appId={selectedApp} timeframe={timeframe} refreshKey={refreshKey} onLoadEnd={stopLoading} />
             )}
             {activePage === "tech" && (
-              <TechPage appId={selectedApp} timeframe={timeframe} refreshKey={refreshKey} />
+              <TechPage appId={selectedApp} timeframe={timeframe} refreshKey={refreshKey} onLoadEnd={stopLoading} />
             )}
             {activePage === "errors" && (
-              <ErrorsPage appId={selectedApp} timeframe={timeframe} refreshKey={refreshKey} />
+              <ErrorsPage appId={selectedApp} timeframe={timeframe} refreshKey={refreshKey} onLoading={triggerLoading} onLoadEnd={stopLoading} />
             )}
             {activePage === "journeys" && (
-              <JourneysPage appId={selectedApp} timeframe={timeframe} refreshKey={refreshKey} />
+              <JourneysPage appId={selectedApp} timeframe={timeframe} refreshKey={refreshKey} onLoadEnd={stopLoading} />
             )}
             {activePage === "sessions" && (
-              <SessionExplorerPage appId={selectedApp} timeframe={timeframe} refreshKey={refreshKey} />
+              <SessionExplorerPage appId={selectedApp} timeframe={timeframe} refreshKey={refreshKey} onLoadEnd={stopLoading} />
             )}
             {activePage === "vitals" && (
-              <WebVitalsPage appId={selectedApp} timeframe={timeframe} refreshKey={refreshKey} />
+              <WebVitalsPage appId={selectedApp} timeframe={timeframe} refreshKey={refreshKey} onLoading={triggerLoading} onLoadEnd={stopLoading} />
             )}
             {activePage === "retention" && (
-              <RetentionPage appId={selectedApp} timeframe={timeframe} refreshKey={refreshKey} />
+              <RetentionPage appId={selectedApp} timeframe={timeframe} refreshKey={refreshKey} onLoadEnd={stopLoading} />
             )}
             {activePage === "conversions" && (
-              <ConversionsPage appId={selectedApp} timeframe={timeframe} refreshKey={refreshKey} />
+              <ConversionsPage appId={selectedApp} timeframe={timeframe} refreshKey={refreshKey} onLoadEnd={stopLoading} />
             )}
             {activePage === "utm" && (
-              <UTMPage appId={selectedApp} timeframe={timeframe} refreshKey={refreshKey} />
+              <UTMPage appId={selectedApp} timeframe={timeframe} refreshKey={refreshKey} onLoadEnd={stopLoading} />
             )}
           </main>
         </div>

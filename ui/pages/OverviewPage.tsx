@@ -20,6 +20,7 @@ interface OverviewPageProps {
   appId: string;
   timeframe: string;
   refreshKey: number;
+  onLoadEnd?: () => void;
 }
 
 interface KPIs {
@@ -30,7 +31,7 @@ interface KPIs {
   avgDuration: number;
 }
 
-export function OverviewPage({ appId, timeframe, refreshKey }: OverviewPageProps) {
+export function OverviewPage({ appId, timeframe, refreshKey, onLoadEnd }: OverviewPageProps) {
   const [kpis, setKpis] = useState<KPIs | null>(null);
   const [sessionsTrend, setSessionsTrend] = useState<TimeSeriesPoint[]>([]);
   const [usersTrend, setUsersTrend] = useState<TimeSeriesPoint[]>([]);
@@ -85,6 +86,7 @@ export function OverviewPage({ appId, timeframe, refreshKey }: OverviewPageProps
       console.error("[Overview] fetch error:", err);
     } finally {
       setLoading(false);
+      onLoadEnd?.();
     }
   }, [appId, timeframe]);
 
