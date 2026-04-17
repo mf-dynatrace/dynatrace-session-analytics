@@ -1031,9 +1031,124 @@ ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
   `.trim();
 }
 
+/** Returning visitor loyalty tiers — how many sessions do returners have? */
+export function retentionReturningDepth(appId: string, timeframe: string): string {
+  return `
+fetch user.events, ${timeframeClause(timeframe)}
+${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
+| summarize sessions = countDistinct(dt.rum.session.id), by: { dt.rum.instance.id }
+| filter sessions > 1
+| fieldsAdd loyaltyTier = if(sessions <= 3, "Casual (2-3)",
+    else: if(sessions <= 5, "Regular (4-5)",
+    else: if(sessions <= 10, "Engaged (6-10)",
+    else: "Loyal (11+)")))
+| summarize users = count(), avgSessions = avg(sessions), by: { loyaltyTier }
+| sort avgSessions asc
+  `.trim();
+}
+
+/** Returning visitors — how many distinct days did they visit? */
+export function retentionReturningFrequency(appId: string, timeframe: string): string {
+  return `
+fetch user.events, ${timeframeClause(timeframe)}
+${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
+| fieldsAdd visitDay = formatTimestamp(start_time, format:"yyyy-MM-dd")
+| summarize
+    sessions = countDistinct(dt.rum.session.id),
+    activeDays = countDistinct(visitDay),
+    by: { dt.rum.instance.id }
+| filter sessions > 1
+| fieldsAdd daysPerWeek = toDouble(activeDays) / (toDouble(${timeframeDays(timeframe)}) / 7.0)
+| fieldsAdd freqBand = if(daysPerWeek >= 5, "Daily (5+/wk)",
+    else: if(daysPerWeek >= 2, "Several times/wk",
+    else: if(daysPerWeek >= 0.5, "Weekly",
+    else: "Monthly or less")))
+| summarize users = count(), by: { freqBand }
+| sort users desc
+  `.trim();
+}
+
+/** "New" visitor quality — signals that suggest cookie/tracker blocking rather than truly new */
+export function retentionNewVisitorQuality(appId: string, timeframe: string): string {
+  return `
+fetch user.events, ${timeframeClause(timeframe)}
+${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
+| summarize
+    sessions = countDistinct(dt.rum.session.id),
+    pageViews = count(),
+    browsers = collectDistinct(browser.name),
+    by: { dt.rum.instance.id }
+| filter sessions == 1
+| fieldsAdd browserName = browsers[0]
+| fieldsAdd isPrivacyBrowser = if(
+    browserName == "Safari" or browserName == "Firefox" or browserName == "Brave" or browserName == "DuckDuckGo",
+    true, else: false)
+| fieldsAdd isSinglePage = if(pageViews == 1, true, else: false)
+| summarize
+    totalNew = count(),
+    privacyBrowserNew = countIf(isPrivacyBrowser == true),
+    singlePageNew = countIf(isSinglePage == true),
+    multiPageNew = countIf(pageViews > 3)
+  `.trim();
+}
+
+/** "New" visitor breakdown by browser — which browsers produce the most "new" visitors */
+export function retentionNewByBrowser(appId: string, timeframe: string): string {
+  return `
+fetch user.events, ${timeframeClause(timeframe)}
+${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
+| summarize
+    sessions = countDistinct(dt.rum.session.id),
+    browsers = collectDistinct(browser.name),
+    by: { dt.rum.instance.id }
+| filter sessions == 1
+| fieldsAdd browserName = browsers[0]
+| summarize newVisitors = count(), by: { browserName }
+| sort newVisitors desc
+| limit 10
+  `.trim();
+}
+
+/** Day-of-week patterns for returning visitors */
+export function retentionDayOfWeek(appId: string, timeframe: string): string {
+  return `
+fetch user.events, ${timeframeClause(timeframe)}
+${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
+| summarize sessions = countDistinct(dt.rum.session.id), by: { dt.rum.instance.id, dt.rum.session.id }
+| lookup [
+    fetch user.events, ${timeframeClause(timeframe)}
+    ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
+    | summarize sessionCount = countDistinct(dt.rum.session.id), by: { dt.rum.instance.id }
+  ], sourceField:dt.rum.instance.id, lookupField:dt.rum.instance.id, fields:{ sessionCount }
+| filter sessionCount > 1
+| lookup [
+    fetch user.events, ${timeframeClause(timeframe)}
+    ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
+    | summarize minTime = min(start_time), by: { dt.rum.session.id }
+  ], sourceField:dt.rum.session.id, lookupField:dt.rum.session.id, fields:{ minTime }
+| fieldsAdd dayName = formatTimestamp(minTime, format:"EEEE")
+| summarize visits = count(), by: { dayName }
+| sort visits desc
+  `.trim();
+}
+
+/** Returning visitors over time trend (as a timeseries) */
+export function retentionReturningTrend(appId: string, timeframe: string): string {
+  const interval = timeframeToBucket(timeframe);
+  return `
+fetch user.sessions, ${timeframeClause(timeframe)}
+${sessionAppFilter(appId)}| summarize totalVisitors = countDistinct(dt.rum.instance.id), interval: ${interval}
+  `.trim();
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // CONVERSIONS
 // ═══════════════════════════════════════════════════════════════════════════════
+
+/** Build a DQL filter clause from conversion patterns */
+function conversionFilter(patterns: string[]): string {
+  return patterns.map(p => `contains(page.url.path, "${p}")`).join(" or ");
+}
 
 /** Page depth funnel: sessions reaching N pages */
 export function conversionPageDepthFunnel(appId: string, timeframe: string): string {
@@ -1051,12 +1166,13 @@ ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
 }
 
 /** Top conversion pages (pages that tend to be deeper in sessions) */
-export function conversionGoalPages(appId: string, timeframe: string): string {
+export function conversionGoalPages(appId: string, timeframe: string, patterns?: string[]): string {
+  const filter = conversionFilter(patterns || ["booking", "order", "checkout", "confirm", "payment", "thank", "success", "basket", "cart", "reserve"]);
   return `
 fetch user.events, ${timeframeClause(timeframe)}
 ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
 | filter isNotNull(page.url.path)
-| filter contains(page.url.path, "booking") or contains(page.url.path, "order") or contains(page.url.path, "checkout") or contains(page.url.path, "confirm") or contains(page.url.path, "payment") or contains(page.url.path, "thank") or contains(page.url.path, "success") or contains(page.url.path, "basket") or contains(page.url.path, "cart") or contains(page.url.path, "reserve")
+| filter ${filter}
 | summarize
     views    = count(),
     users    = countDistinct(dt.rum.instance.id),
@@ -1068,12 +1184,13 @@ ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
 }
 
 /** Conversion rate: sessions that reached a "goal" page vs total */
-export function conversionRate(appId: string, timeframe: string): string {
+export function conversionRate(appId: string, timeframe: string, patterns?: string[]): string {
+  const filter = conversionFilter(patterns || ["booking", "order", "checkout", "confirm", "payment", "thank", "success", "basket", "cart", "reserve"]);
   return `
 fetch user.events, ${timeframeClause(timeframe)}
 ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
 | summarize
-    hasGoal  = countIf(contains(page.url.path, "booking") or contains(page.url.path, "order") or contains(page.url.path, "checkout") or contains(page.url.path, "confirm") or contains(page.url.path, "payment") or contains(page.url.path, "thank") or contains(page.url.path, "success") or contains(page.url.path, "basket") or contains(page.url.path, "reserve")),
+    hasGoal  = countIf(${filter}),
     by: { dt.rum.session.id }
 | summarize
     totalSessions = count(),
@@ -1254,4 +1371,20 @@ function timeframeToBucket(timeframe: string): string {
   if (tf === "28d" || tf === "30d") return "1d";
   if (tf === "90d")                 return "1d";
   return "1h"; // default
+}
+
+/** Returns the number of days in the selected timeframe (as a string for DQL injection) */
+function timeframeDays(timeframe: string): string {
+  if (timeframe.startsWith("custom:")) {
+    const [from, to] = timeframe.slice(7).split("/");
+    const days = Math.max(1, Math.round((new Date(to).getTime() - new Date(from).getTime()) / 86_400_000));
+    return String(days);
+  }
+  const tf = timeframe.toLowerCase();
+  if (tf === "30m" || tf === "1h") return "1";
+  if (tf === "6h" || tf === "12h" || tf === "24h" || tf === "1d") return "1";
+  if (tf === "7d") return "7";
+  if (tf === "28d" || tf === "30d") return "28";
+  if (tf === "90d") return "90";
+  return "1";
 }

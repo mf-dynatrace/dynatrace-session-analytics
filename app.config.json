@@ -7,7 +7,7 @@
   "app": {
     "id": "my.user.session.analytics",
     "name": "User Session Analytics",
-    "version": "2.2.1",
+    "version": "2.3.4",
     "icon": "./icon.svg",
     "description": "User session analytics dashboard powered by Dynatrace Gen 3 Grail data",
     "scopes": [
@@ -30,6 +30,18 @@
       {
         "name": "storage:entities:read",
         "comment": "Read RUM application entities for auto-discovery"
+      },
+      {
+        "name": "app-settings:objects:read",
+        "comment": "Read conversion configuration settings"
+      },
+      {
+        "name": "app-settings:objects:write",
+        "comment": "Write conversion configuration settings"
+      },
+      {
+        "name": "settings:objects:write",
+        "comment": "Used to gate settings UI to environment admins only"
       }
     ]
   }

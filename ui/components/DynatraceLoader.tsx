@@ -30,14 +30,14 @@ export function DynatraceLoader({ size = 120 }: { size?: number }) {
 
   return (
     <div style={{
-      position: "absolute",
+      position: "fixed",
       inset: 0,
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
       background: "rgba(15, 17, 20, 0.75)",
       backdropFilter: "blur(2px)",
-      zIndex: 50,
+      zIndex: 9000,
       animation: "dt-fade-in 0.3s ease-out",
     }}>
       <style>{KEYFRAMES}</style>

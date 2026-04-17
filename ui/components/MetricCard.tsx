@@ -14,9 +14,10 @@ interface MetricCardProps {
   suffix?:  string;          // e.g. "%", "ms", "s"
   loading?: boolean;
   invertChange?: boolean;    // true = lower is better (e.g. bounce rate)
+  subtitle?: string;         // small text below the value
 }
 
-export function MetricCard({ label, value, change, suffix, loading, invertChange }: MetricCardProps) {
+export function MetricCard({ label, value, change, suffix, loading, invertChange, subtitle }: MetricCardProps) {
   const isPositive = invertChange ? (change ?? 0) < 0 : (change ?? 0) >= 0;
 
   return (
@@ -38,6 +39,9 @@ export function MetricCard({ label, value, change, suffix, loading, invertChange
         <div style={isPositive ? GA4_STYLES.changePositive : GA4_STYLES.changeNegative}>
           {change >= 0 ? "▲" : "▼"} {Math.abs(change).toFixed(1)}%
         </div>
+      )}
+      {subtitle && !loading && (
+        <div style={{ fontSize: 10, color: GA4_COLORS.textTertiary, marginTop: 2 }}>{subtitle}</div>
       )}
     </div>
   );

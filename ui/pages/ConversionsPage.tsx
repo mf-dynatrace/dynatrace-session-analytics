@@ -12,6 +12,7 @@ import { DataTable } from "../components/DataTable";
 import { BarChart, BarItem } from "../components/BarChart";
 import { CardSkeleton } from "../components/LoadingState";
 import { executeMultipleDql } from "../hooks/useDqlQuery";
+import { useConversionSettings, DEFAULT_CONVERSION_PATTERNS } from "../hooks/useConversionSettings";
 import * as Q from "../dql/queries";
 
 interface ConversionsPageProps {
@@ -28,14 +29,19 @@ export function ConversionsPage({ appId, timeframe, refreshKey, onLoadEnd }: Con
   const [convertedSessions, setConvertedSessions] = useState(0);
   const [conversionRate, setConversionRate] = useState(0);
   const [loading, setLoading] = useState(true);
+  const { getPatternsForApp, loading: settingsLoading } = useConversionSettings();
+
+  const patterns = getPatternsForApp(appId);
+  const isCustom = patterns !== DEFAULT_CONVERSION_PATTERNS;
 
   const fetchData = useCallback(async () => {
+    if (settingsLoading) return;
     setLoading(true);
     try {
       const results = await executeMultipleDql({
         funnel: Q.conversionPageDepthFunnel(appId, timeframe),
-        goals:  Q.conversionGoalPages(appId, timeframe),
-        rate:   Q.conversionRate(appId, timeframe),
+        goals:  Q.conversionGoalPages(appId, timeframe, patterns),
+        rate:   Q.conversionRate(appId, timeframe, patterns),
       });
 
       const funnelRow = results.funnel[0];
@@ -63,7 +69,7 @@ export function ConversionsPage({ appId, timeframe, refreshKey, onLoadEnd }: Con
       setLoading(false);
       onLoadEnd?.();
     }
-  }, [appId, timeframe]);
+  }, [appId, timeframe, patterns, settingsLoading]);
 
   useEffect(() => { fetchData(); }, [fetchData, refreshKey]);
 
@@ -90,7 +96,22 @@ export function ConversionsPage({ appId, timeframe, refreshKey, onLoadEnd }: Con
         background: `linear-gradient(135deg, ${GA4_COLORS.primaryBg}, ${GA4_COLORS.cardBg})`,
       }}>
         <div style={{ fontSize: 12, color: GA4_COLORS.textSecondary, marginBottom: 4 }}>
-          Conversion defined as sessions reaching: booking, order, checkout, confirm, payment, thank, success, basket, cart, or reserve pages
+          {isCustom ? "✓ Using custom conversion patterns from Settings:" : "Conversion defined as sessions reaching pages matching:"}
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 4 }}>
+          {patterns.map((p, i) => (
+            <span key={i} style={{
+              display: "inline-block",
+              padding: "2px 8px",
+              background: isCustom ? `${GA4_COLORS.primary}20` : `${GA4_COLORS.textTertiary}20`,
+              color: isCustom ? GA4_COLORS.primary : GA4_COLORS.textTertiary,
+              borderRadius: 10,
+              fontSize: 11,
+              fontFamily: "monospace",
+            }}>
+              {p}
+            </span>
+          ))}
         </div>
       </div>
 
@@ -106,7 +127,7 @@ export function ConversionsPage({ appId, timeframe, refreshKey, onLoadEnd }: Con
       <div style={GA4_STYLES.card} className="ga4-animate">
         <div style={GA4_STYLES.sectionTitle}>Goal pages detected</div>
         <div style={{ fontSize: 12, color: GA4_COLORS.textTertiary, marginBottom: 12 }}>
-          Pages matching conversion keywords (booking, order, checkout, confirm, payment, etc.)
+          Pages matching configured conversion patterns
         </div>
         {loading ? <CardSkeleton height={320} /> : (
           goalPages.length === 0 ? (

@@ -1,0 +1,51 @@
+{
+  "$schema": "https://developer.dynatrace.com/docs-assets/schema_strict_apps.json",
+  "dynatrace": "1",
+  "schemaId": "conversion-config",
+  "version": "0.0.1",
+  "summaryPattern": "{name}",
+  "displayName": "Conversion Configuration",
+  "description": "Configure conversion page patterns per Frontend application. Only users with app-settings write permissions can modify these settings.",
+  "multiObject": true,
+  "maxObjects": 50,
+  "ordered": false,
+  "ownerBasedAccessControl": true,
+  "properties": {
+    "name": {
+      "displayName": "Configuration Name",
+      "description": "A label for this conversion configuration (e.g. 'Sizzling Pubs Conversions')",
+      "type": "text",
+      "nullable": false,
+      "constraints": [
+        { "type": "LENGTH", "maxLength": 100, "minLength": 1 }
+      ],
+      "default": ""
+    },
+    "applicationId": {
+      "displayName": "Frontend Application ID",
+      "description": "The dt.entity.rum_application entity ID this config applies to (e.g. APPLICATION-ABC123)",
+      "type": "text",
+      "nullable": false,
+      "constraints": [
+        { "type": "LENGTH", "maxLength": 80, "minLength": 10 },
+        { "type": "PATTERN", "pattern": "^APPLICATION-[A-F0-9]+$" }
+      ],
+      "default": ""
+    },
+    "conversionPatterns": {
+      "displayName": "Conversion Page Patterns",
+      "description": "URL path keywords that indicate a conversion (e.g. 'checkout', 'payment', 'thank-you'). A session visiting any page containing one of these patterns counts as converted.",
+      "type": "list",
+      "items": {
+        "type": "text",
+        "constraints": [
+          { "type": "LENGTH", "maxLength": 200, "minLength": 1 }
+        ]
+      },
+      "nullable": false
+    }
+  },
+  "schemaConstraints": [
+    { "type": "UNIQUE", "uniqueProperties": ["applicationId"] }
+  ]
+}

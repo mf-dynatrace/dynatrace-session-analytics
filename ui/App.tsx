@@ -29,11 +29,12 @@ import { WebVitalsPage }     from "./pages/WebVitalsPage";
 import { RetentionPage }     from "./pages/RetentionPage";
 import { ConversionsPage }   from "./pages/ConversionsPage";
 import { UTMPage }           from "./pages/UTMPage";
+import { SettingsPage }      from "./pages/SettingsPage";
 
 // ── Navigation items ──────────────────────────────────────────────────────────
 
 type PageId = "overview" | "realtime" | "acquisition" | "engagement" | "tech"
-  | "errors" | "journeys" | "sessions" | "vitals" | "retention" | "conversions" | "utm";
+  | "errors" | "journeys" | "sessions" | "vitals" | "retention" | "conversions" | "utm" | "settings";
 
 interface NavItem {
   id:    PageId;
@@ -128,6 +129,13 @@ const NAV_ITEMS: NavItem[] = [
     icon: "M14.4 6L14 4H5v17h2v-7h5.6l.4 2h7V6z",
     section: "Growth",
   },
+  {
+    id: "settings",
+    label: "Settings",
+    // Gear/cog icon
+    icon: "M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.488.488 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.44.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1115.6 12 3.611 3.611 0 0112 15.6z",
+    section: "Admin",
+  },
 ];
 
 // ── Time range options ────────────────────────────────────────────────────────
@@ -157,14 +165,47 @@ export function App() {
 
   // Custom date range picker state
   const [showCustomPicker, setShowCustomPicker] = useState(false);
-  const [customFrom, setCustomFrom] = useState("");
-  const [customTo, setCustomTo] = useState("");
+  const [calMonth, setCalMonth] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
+  const [rangeStart, setRangeStart] = useState<string | null>(null);
+  const [rangeEnd, setRangeEnd] = useState<string | null>(null);
+  const [hoverDate, setHoverDate] = useState<string | null>(null);
+
+  // Long-range confirmation modal
+  const [pendingTimeframe, setPendingTimeframe] = useState<string | null>(null);
 
   // Global loading overlay — shown on refresh, page change, timeframe change
   const [globalLoading, setGlobalLoading] = useState(false);
   const loadingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isCustom = timeframe.startsWith("custom:");
+
+  /** Is this timeframe longer than 7 days? */
+  const isLongRange = (tf: string): boolean => {
+    if (tf.startsWith("custom:")) {
+      const [from, to] = tf.slice(7).split("/");
+      const days = (new Date(to).getTime() - new Date(from).getTime()) / 86_400_000;
+      return days > 7;
+    }
+    return tf === "28d" || tf === "30d" || tf === "90d";
+  };
+
+  /** Change timeframe — shows confirmation for long ranges */
+  const requestTimeframe = (tf: string) => {
+    if (isLongRange(tf)) {
+      setPendingTimeframe(tf);
+    } else {
+      setTimeframe(tf);
+    }
+  };
+
+  const confirmLongRange = () => {
+    if (pendingTimeframe) setTimeframe(pendingTimeframe);
+    setPendingTimeframe(null);
+  };
+
+  const cancelLongRange = () => {
+    setPendingTimeframe(null);
+  };
 
   const { apps, loading: appsLoading } = useApplications();
 
@@ -194,11 +235,30 @@ export function App() {
   }, [refreshKey, activePage, timeframe, selectedApp]);
 
   const handleCustomApply = () => {
-    if (customFrom && customTo) {
-      const fromISO = new Date(customFrom).toISOString();
-      const toISO   = new Date(customTo + "T23:59:59").toISOString();
-      setTimeframe(`custom:${fromISO}/${toISO}`);
+    if (rangeStart && rangeEnd) {
+      const fromISO = new Date(rangeStart).toISOString();
+      const toISO   = new Date(rangeEnd + "T23:59:59").toISOString();
+      const tf = `custom:${fromISO}/${toISO}`;
+      requestTimeframe(tf);
       setShowCustomPicker(false);
+    }
+  };
+
+  /** Handle clicking a day on the calendar */
+  const handleCalendarClick = (dateStr: string) => {
+    if (!rangeStart || rangeEnd) {
+      // Start a new selection
+      setRangeStart(dateStr);
+      setRangeEnd(null);
+      setHoverDate(null);
+    } else {
+      // Complete the selection — ensure start <= end
+      if (dateStr < rangeStart) {
+        setRangeEnd(rangeStart);
+        setRangeStart(dateStr);
+      } else {
+        setRangeEnd(dateStr);
+      }
     }
   };
 
@@ -331,7 +391,7 @@ export function App() {
             fontSize: 11,
             color: "#6d7680",
           }}>
-            User Session Analytics v2.2.1
+            User Session Analytics v2.3.4
             <br />
             Dynatrace Gen 3 Grail
           </div>
@@ -390,7 +450,7 @@ export function App() {
               {TIME_OPTIONS.map(opt => (
                 <button
                   key={opt.value}
-                  onClick={() => { setTimeframe(opt.value); setShowCustomPicker(false); }}
+                  onClick={() => { requestTimeframe(opt.value); setShowCustomPicker(false); }}
                   style={{
                     padding: "6px 12px",
                     borderRadius: 16,
@@ -442,99 +502,149 @@ export function App() {
                 {isCustom ? customLabel : "Custom"}
               </button>
 
-              {/* Custom date picker popover */}
-              {showCustomPicker && (
-                <div style={{
-                  position: "absolute",
-                  top: "100%",
-                  right: 0,
-                  marginTop: 8,
-                  background: GA4_COLORS.cardBg,
-                  border: `1px solid ${GA4_COLORS.border}`,
-                  borderRadius: 8,
-                  padding: 16,
-                  zIndex: 100,
-                  boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 12,
-                  minWidth: 260,
-                }}>
-                  <div style={{ fontSize: 13, fontWeight: 500, color: GA4_COLORS.textPrimary }}>
-                    Custom date range
+              {/* Custom date picker popover — visual calendar */}
+              {showCustomPicker && (() => {
+                const today = new Date(); today.setHours(0,0,0,0);
+                const todayStr = today.toISOString().slice(0, 10);
+                const year = calMonth.getFullYear();
+                const month = calMonth.getMonth();
+                const firstDay = new Date(year, month, 1).getDay(); // 0=Sun
+                const startOffset = firstDay === 0 ? 6 : firstDay - 1; // Mon=0
+                const daysInMonth = new Date(year, month + 1, 0).getDate();
+                const monthLabel = calMonth.toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+
+                const effectiveEnd = rangeEnd || (rangeStart && hoverDate && !rangeEnd ? hoverDate : null);
+                const selStart = rangeStart && effectiveEnd && effectiveEnd < rangeStart ? effectiveEnd : rangeStart;
+                const selEnd = rangeStart && effectiveEnd && effectiveEnd < rangeStart ? rangeStart : effectiveEnd;
+
+                const cells: { dateStr: string; day: number; isOutside: boolean }[] = [];
+                for (let i = 0; i < startOffset; i++) {
+                  const d = new Date(year, month, -startOffset + i + 1);
+                  cells.push({ dateStr: d.toISOString().slice(0, 10), day: d.getDate(), isOutside: true });
+                }
+                for (let d = 1; d <= daysInMonth; d++) {
+                  const dt = new Date(year, month, d);
+                  cells.push({ dateStr: dt.toISOString().slice(0, 10), day: d, isOutside: false });
+                }
+                const remaining = 7 - (cells.length % 7);
+                if (remaining < 7) {
+                  for (let i = 1; i <= remaining; i++) {
+                    const d = new Date(year, month + 1, i);
+                    cells.push({ dateStr: d.toISOString().slice(0, 10), day: d.getDate(), isOutside: true });
+                  }
+                }
+
+                return (
+                  <div style={{
+                    position: "absolute",
+                    top: "100%",
+                    right: 0,
+                    marginTop: 8,
+                    background: GA4_COLORS.cardBg,
+                    border: `1px solid ${GA4_COLORS.border}`,
+                    borderRadius: 8,
+                    padding: 16,
+                    zIndex: 100,
+                    boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+                    width: 300,
+                    userSelect: "none",
+                  }}>
+                    {/* Month header with nav arrows */}
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                      <button onClick={() => setCalMonth(new Date(year, month - 1, 1))}
+                        style={{ background: "none", border: "none", color: GA4_COLORS.textSecondary, cursor: "pointer", fontSize: 18, padding: "2px 8px" }}>‹</button>
+                      <div style={{ fontSize: 13, fontWeight: 500, color: GA4_COLORS.textPrimary }}>{monthLabel}</div>
+                      <button onClick={() => setCalMonth(new Date(year, month + 1, 1))}
+                        style={{ background: "none", border: "none", color: GA4_COLORS.textSecondary, cursor: "pointer", fontSize: 18, padding: "2px 8px" }}>›</button>
+                    </div>
+
+                    {/* Day-of-week headers */}
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 1, marginBottom: 4 }}>
+                      {["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"].map(d => (
+                        <div key={d} style={{ textAlign: "center", fontSize: 10, color: GA4_COLORS.textTertiary, padding: "4px 0", fontWeight: 600 }}>{d}</div>
+                      ))}
+                    </div>
+
+                    {/* Calendar grid */}
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 1 }}>
+                      {cells.map(({ dateStr, day, isOutside }, idx) => {
+                        const isFuture = dateStr > todayStr;
+                        const isStart = dateStr === selStart;
+                        const isEnd = dateStr === selEnd;
+                        const isInRange = selStart && selEnd && dateStr > selStart && dateStr < selEnd;
+                        const isToday = dateStr === todayStr;
+                        const disabled = isFuture || isOutside;
+
+                        let bg: string = "transparent";
+                        let fg: string = isOutside ? GA4_COLORS.textTertiary : GA4_COLORS.textPrimary;
+                        let borderR = "50%";
+                        if (isFuture) fg = "rgba(255,255,255,0.15)";
+                        if (isStart || isEnd) { bg = GA4_COLORS.primary; fg = "#fff"; }
+                        else if (isInRange) { bg = `${GA4_COLORS.primary}30`; fg = GA4_COLORS.textPrimary; borderR = "0"; }
+
+                        return (
+                          <div
+                            key={idx}
+                            onClick={() => !disabled && handleCalendarClick(dateStr)}
+                            onMouseEnter={() => { if (rangeStart && !rangeEnd && !disabled) setHoverDate(dateStr); }}
+                            style={{
+                              textAlign: "center",
+                              fontSize: 12,
+                              padding: "6px 0",
+                              cursor: disabled ? "default" : "pointer",
+                              background: bg,
+                              color: fg,
+                              borderRadius: isStart ? "50% 0 0 50%" : isEnd ? "0 50% 50% 0" : (isInRange ? "0" : "50%"),
+                              fontWeight: isToday ? 700 : 400,
+                              outline: isToday && !isStart && !isEnd ? `1px solid ${GA4_COLORS.primary}` : "none",
+                              outlineOffset: -1,
+                              transition: "background 0.1s",
+                            }}
+                          >
+                            {day}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Selection summary + buttons */}
+                    <div style={{ marginTop: 12, fontSize: 12, color: GA4_COLORS.textSecondary, textAlign: "center", minHeight: 18 }}>
+                      {rangeStart && rangeEnd
+                        ? `${new Date(rangeStart).toLocaleDateString("en-GB", { day: "numeric", month: "short" })} – ${new Date(rangeEnd).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`
+                        : rangeStart
+                          ? "Click an end date"
+                          : "Click a start date"}
+                    </div>
+
+                    <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 8 }}>
+                      <button
+                        onClick={() => { setShowCustomPicker(false); setRangeStart(null); setRangeEnd(null); }}
+                        style={{
+                          padding: "6px 14px", borderRadius: 4,
+                          border: `1px solid ${GA4_COLORS.border}`,
+                          background: "transparent", color: GA4_COLORS.textSecondary,
+                          fontSize: 13, fontFamily: GA4_FONTS.family, cursor: "pointer",
+                        }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleCustomApply}
+                        disabled={!rangeStart || !rangeEnd}
+                        style={{
+                          padding: "6px 14px", borderRadius: 4, border: "none",
+                          background: (!rangeStart || !rangeEnd) ? "#333" : GA4_COLORS.primary,
+                          color: (!rangeStart || !rangeEnd) ? "#666" : "#fff",
+                          fontSize: 13, fontWeight: 500, fontFamily: GA4_FONTS.family,
+                          cursor: (!rangeStart || !rangeEnd) ? "default" : "pointer",
+                        }}
+                      >
+                        Apply
+                      </button>
+                    </div>
                   </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    <label style={{ fontSize: 12, color: GA4_COLORS.textSecondary }}>From</label>
-                    <input
-                      type="date"
-                      value={customFrom}
-                      onChange={e => setCustomFrom(e.target.value)}
-                      style={{
-                        padding: "6px 10px",
-                        borderRadius: 4,
-                        border: `1px solid ${GA4_COLORS.border}`,
-                        background: GA4_COLORS.pageBg,
-                        color: GA4_COLORS.textPrimary,
-                        fontSize: 13,
-                        fontFamily: GA4_FONTS.family,
-                        outline: "none",
-                      }}
-                    />
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    <label style={{ fontSize: 12, color: GA4_COLORS.textSecondary }}>To</label>
-                    <input
-                      type="date"
-                      value={customTo}
-                      onChange={e => setCustomTo(e.target.value)}
-                      style={{
-                        padding: "6px 10px",
-                        borderRadius: 4,
-                        border: `1px solid ${GA4_COLORS.border}`,
-                        background: GA4_COLORS.pageBg,
-                        color: GA4_COLORS.textPrimary,
-                        fontSize: 13,
-                        fontFamily: GA4_FONTS.family,
-                        outline: "none",
-                      }}
-                    />
-                  </div>
-                  <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-                    <button
-                      onClick={() => setShowCustomPicker(false)}
-                      style={{
-                        padding: "6px 14px",
-                        borderRadius: 4,
-                        border: `1px solid ${GA4_COLORS.border}`,
-                        background: "transparent",
-                        color: GA4_COLORS.textSecondary,
-                        fontSize: 13,
-                        fontFamily: GA4_FONTS.family,
-                        cursor: "pointer",
-                      }}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={handleCustomApply}
-                      disabled={!customFrom || !customTo}
-                      style={{
-                        padding: "6px 14px",
-                        borderRadius: 4,
-                        border: "none",
-                        background: (!customFrom || !customTo) ? "#333" : GA4_COLORS.primary,
-                        color: (!customFrom || !customTo) ? "#666" : "#fff",
-                        fontSize: 13,
-                        fontWeight: 500,
-                        fontFamily: GA4_FONTS.family,
-                        cursor: (!customFrom || !customTo) ? "default" : "pointer",
-                      }}
-                    >
-                      Apply
-                    </button>
-                  </div>
-                </div>
-              )}
+                );
+              })()}
             </div>
 
             {/* Refresh Button */}
@@ -605,9 +715,72 @@ export function App() {
             {activePage === "utm" && (
               <UTMPage appId={selectedApp} timeframe={timeframe} refreshKey={refreshKey} onLoadEnd={stopLoading} />
             )}
+            {activePage === "settings" && (
+              <SettingsPage onLoadEnd={stopLoading} />
+            )}
           </main>
         </div>
       </div>
+
+      {/* Long-range confirmation modal */}
+      {pendingTimeframe && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 9999,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          background: "rgba(0,0,0,0.6)", backdropFilter: "blur(2px)",
+        }}>
+          <div style={{
+            background: GA4_COLORS.cardBg,
+            border: `1px solid ${GA4_COLORS.border}`,
+            borderRadius: 12,
+            padding: "28px 32px",
+            maxWidth: 420,
+            width: "90%",
+            boxShadow: "0 12px 40px rgba(0,0,0,0.5)",
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+              <svg width={22} height={22} viewBox="0 0 24 24" fill="#f9ab00">
+                <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z" />
+              </svg>
+              <div style={{ fontSize: 16, fontWeight: 500, color: GA4_COLORS.textPrimary }}>
+                Extended loading time
+              </div>
+            </div>
+            <div style={{ fontSize: 13, color: GA4_COLORS.textSecondary, lineHeight: 1.6, marginBottom: 24 }}>
+              Loading times will be extended due to the amount of data being queried over a longer time range.
+              Some pages may take considerably longer to load.
+            </div>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button
+                onClick={cancelLongRange}
+                style={{
+                  padding: "8px 20px", borderRadius: 6,
+                  border: `1px solid ${GA4_COLORS.border}`,
+                  background: "transparent",
+                  color: GA4_COLORS.textSecondary,
+                  fontSize: 13, fontFamily: GA4_FONTS.family,
+                  cursor: "pointer",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmLongRange}
+                style={{
+                  padding: "8px 20px", borderRadius: 6,
+                  border: "none",
+                  background: GA4_COLORS.primary,
+                  color: "#fff",
+                  fontSize: 13, fontWeight: 500, fontFamily: GA4_FONTS.family,
+                  cursor: "pointer",
+                }}
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
