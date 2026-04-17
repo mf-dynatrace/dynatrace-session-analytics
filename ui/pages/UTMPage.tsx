@@ -220,8 +220,12 @@ export function UTMPage({ appId, timeframe, refreshKey, onLoadEnd }: UTMPageProp
           contentTerm.length > 0 ? (
             <DataTable
               columns={[
-                { key: "content", label: "Content (utm_content)", width: "35%" },
-                { key: "term", label: "Term (utm_term)", width: "35%" },
+                { key: "content", label: "Content (utm_content)", width: "35%",
+                  format: (v: unknown) => { const s = String(v); return /^\d{15,}$/.test(s) ? `…${s.slice(-8)}` : s; },
+                  title: (v: unknown) => String(v) },
+                { key: "term", label: "Term (utm_term)", width: "35%",
+                  format: (v: unknown) => { const s = String(v); return /^\d{15,}$/.test(s) ? `…${s.slice(-8)}` : s; },
+                  title: (v: unknown) => String(v) },
                 { key: "sessions", label: "Sessions", align: "right", showBar: true,
                   format: (v: unknown) => Number(v).toLocaleString(), width: "30%" },
               ]}

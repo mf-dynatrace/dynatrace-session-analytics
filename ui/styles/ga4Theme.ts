@@ -60,7 +60,7 @@ export const GA4_COLORS = {
 // ── Dynatrace Typography ─────────────────────────────────────────────────────
 
 export const GA4_FONTS = {
-  family: "'BerninaSans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
+  family: "DynatraceFlow, Roboto, 'Helvetica Neue', Arial, sans-serif",
   mono:   "'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
 } as const;
 

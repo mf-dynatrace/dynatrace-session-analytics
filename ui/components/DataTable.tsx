@@ -12,6 +12,7 @@ interface Column {
   label:     string;
   align?:    "left" | "right" | "center";
   format?:   (value: unknown) => string;
+  title?:    (value: unknown) => string;  // hover tooltip
   width?:    number | string;
   showBar?:  boolean;  // show inline horizontal bar
 }
@@ -120,6 +121,7 @@ export function DataTable({ columns, data, loading, maxRows }: DataTableProps) {
                 return (
                   <td
                     key={col.key}
+                    title={col.title ? col.title(raw) : undefined}
                     style={{
                       ...GA4_STYLES.tableCell,
                       textAlign: col.align ?? "left",
