@@ -310,7 +310,7 @@ export function App() {
             fontSize: 11,
             color: "#6d7680",
           }}>
-            User Session Analytics v2.1.5
+            User Session Analytics v2.1.7
             <br />
             Dynatrace Gen 3 Grail
           </div>

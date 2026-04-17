@@ -812,6 +812,18 @@ ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
   `.trim();
 }
 
+/** Count total sessions with 2+ navigation pages (for "Showing X of Y" label) */
+export function journeySessionCount(appId: string, timeframe: string): string {
+  return `
+fetch user.events, ${timeframeClause(timeframe)}
+${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
+| filter isNotNull(page.url.path)
+| summarize pageCount = count(), by: { dt.rum.session.id }
+| filter pageCount >= 2
+| summarize totalSessions = count()
+  `.trim();
+}
+
 /** Sankey session-level page arrays: one row per session with ordered page paths */
 export function journeySankeyFlows(appId: string, timeframe: string, maxSteps: number = 5): string {
   return `

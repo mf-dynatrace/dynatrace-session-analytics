@@ -30,6 +30,7 @@ export function JourneysPage({ appId, timeframe, refreshKey }: JourneysPageProps
   const [sankeyLoading, setSankeyLoading] = useState(true);
   const [maxSteps, setMaxSteps] = useState(5);
   const [showAllFlows, setShowAllFlows] = useState(false);
+  const [totalSessions, setTotalSessions] = useState<number | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -40,10 +41,12 @@ export function JourneysPage({ appId, timeframe, refreshKey }: JourneysPageProps
         sankey:  Q.journeySankeyFlows(appId, timeframe, maxSteps),
         exits:   Q.journeyExitPages(appId, timeframe),
         paths:   Q.journeyTopPaths(appId, timeframe),
+        sessionCount: Q.journeySessionCount(appId, timeframe),
       });
 
       setFlows(results.flows);
       setSankeyData(results.sankey);
+      setTotalSessions(Number(results.sessionCount?.[0]?.["totalSessions"]) || null);
       setExitPages(
         results.exits
           .filter(r => r["exitPage"])
@@ -146,6 +149,11 @@ export function JourneysPage({ appId, timeframe, refreshKey }: JourneysPageProps
         {sankeyLoading ? <CardSkeleton height={440} /> : (
           <SunburstChart data={sankeyData} />
         )}
+        {!sankeyLoading && totalSessions !== null && (
+          <div style={{ fontSize: 11, color: GA4_COLORS.textTertiary, marginTop: 8 }}>
+            Showing {Math.min(sankeyData.length, 5000).toLocaleString()} of {totalSessions.toLocaleString()} sessions
+          </div>
+        )}
       </div>
 
       {/* Sankey flow diagram — bottom of page */}
@@ -181,6 +189,11 @@ export function JourneysPage({ appId, timeframe, refreshKey }: JourneysPageProps
         </p>
         {sankeyLoading ? <CardSkeleton height={420} /> : (
           <SankeyChart data={sankeyData} topN={8} maxSteps={maxSteps} />
+        )}
+        {!sankeyLoading && totalSessions !== null && (
+          <div style={{ fontSize: 11, color: GA4_COLORS.textTertiary, marginTop: 8 }}>
+            Showing {Math.min(sankeyData.length, 5000).toLocaleString()} of {totalSessions.toLocaleString()} sessions
+          </div>
         )}
       </div>
     </div>
