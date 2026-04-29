@@ -1388,3 +1388,172 @@ function timeframeDays(timeframe: string): string {
   if (tf === "90d") return "90";
   return "1";
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// AEM REQUEST ANALYSIS — Content Navigation & Referrer Intelligence
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Summary KPIs: total page views, unique referrer domains, avg session depth,
+ * and percentage of direct (non-referred) traffic.
+ */
+export function aemKPIs(appId: string, timeframe: string): string {
+  return `
+fetch user.events, ${timeframeClause(timeframe)}
+${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
+| summarize
+    refDomain = first(page.source.url.domain),
+    pageCount = count(),
+    by: { dt.rum.session.id }
+| summarize
+    totalSessions      = count(),
+    totalPageViews     = sum(pageCount),
+    avgDepth           = avg(pageCount),
+    uniqueRefDomains   = countDistinct(refDomain),
+    directSessions     = countIf(isNull(refDomain) or refDomain == "")
+  `.trim();
+}
+
+/**
+ * Per-session page arrays WITH referrer domain — source data for the Chord diagram.
+ * Each row: { pages: string[], refDomain: string, pageCount: number }
+ * Processed client-side to build the page-to-page transition matrix.
+ */
+export function aemChordFlows(appId: string, timeframe: string): string {
+  return `
+fetch user.events, ${timeframeClause(timeframe)}
+${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
+| filter isNotNull(page.url.path)
+| sort start_time asc
+| summarize
+    pages     = collectArray(page.url.path),
+    refDomain = first(page.source.url.domain),
+    by: { dt.rum.session.id }
+| fieldsAdd pageCount = arraySize(pages)
+| filter pageCount >= 1
+| limit 25000
+  `.trim();
+}
+
+/**
+ * Top referrer domains — how many sessions originated from each external source.
+ */
+export function aemReferrerDomains(appId: string, timeframe: string): string {
+  return `
+fetch user.events, ${timeframeClause(timeframe)}
+${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
+| summarize refDomain = first(page.source.url.domain), by: { dt.rum.session.id }
+| fieldsAdd refSource = if(isNull(refDomain) or refDomain == "", "Direct / None", else: refDomain)
+| summarize sessions = count(), by: { refSource }
+| sort sessions desc
+| limit 20
+  `.trim();
+}
+
+/**
+ * Entry page analysis by referrer channel:
+ * which landing pages do users arrive on from each traffic source?
+ * Returns: { channel, entryPage, sessions }
+ */
+export function aemEntryPagesByReferrer(appId: string, timeframe: string): string {
+  return `
+fetch user.events, ${timeframeClause(timeframe)}
+${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
+| filter isNotNull(page.url.path)
+| sort start_time asc
+| summarize
+    pages     = collectArray(page.url.path),
+    refDomain = first(page.source.url.domain),
+    by: { dt.rum.session.id }
+| fieldsAdd entryPage = arrayFirst(pages)
+| fieldsAdd channel = if(isNull(refDomain) or refDomain == "", "Direct",
+    else: if(contains(refDomain, "google") or contains(refDomain, "bing") or contains(refDomain, "yahoo") or contains(refDomain, "duckduckgo"), "Organic Search",
+    else: if(contains(refDomain, "facebook") or contains(refDomain, "instagram") or contains(refDomain, "twitter") or contains(refDomain, "x.com") or contains(refDomain, "linkedin") or contains(refDomain, "tiktok") or contains(refDomain, "pinterest"), "Social",
+    else: "Referral")))
+| summarize sessions = count(), by: { channel, entryPage }
+| sort sessions desc
+| limit 40
+  `.trim();
+}
+
+/**
+ * Content performance: top pages by views, with unique users, avg time on page.
+ */
+export function aemContentPerformance(appId: string, timeframe: string): string {
+  return `
+fetch user.events, ${timeframeClause(timeframe)}
+${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
+| filter isNotNull(page.url.path)
+| summarize
+    views       = count(),
+    uniqueUsers = countDistinct(dt.rum.instance.id),
+    avgDuration = avg(toDouble(duration) / 1000000.0),
+    by: { page.url.path }
+| sort views desc
+| limit 25
+  `.trim();
+}
+
+/**
+ * Referrer channel trend over time — sessions per channel per bucket.
+ * Returns makeTimeseries result: { timeframe: timestamp, sessions: number, channel: string }
+ */
+export function aemReferrerChannelOverTime(appId: string, timeframe: string): string {
+  const interval = timeframeToBucket(timeframe);
+  return `
+fetch user.events, ${timeframeClause(timeframe)}
+${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
+| fieldsAdd channel = if(isNull(page.source.url.domain) or page.source.url.domain == "", "Direct",
+    else: if(contains(page.source.url.domain, "google") or contains(page.source.url.domain, "bing") or contains(page.source.url.domain, "yahoo"), "Organic",
+    else: if(contains(page.source.url.domain, "facebook") or contains(page.source.url.domain, "instagram") or contains(page.source.url.domain, "twitter") or contains(page.source.url.domain, "x.com") or contains(page.source.url.domain, "linkedin") or contains(page.source.url.domain, "tiktok"), "Social",
+    else: "Referral")))
+| makeTimeseries sessions = countDistinct(dt.rum.session.id), interval:${interval}, by: { channel }
+  `.trim();
+}
+
+/**
+ * Session depth (pages per session) broken down by referrer channel.
+ * Useful for seeing whether organic search users explore deeper than direct visitors.
+ */
+export function aemSessionDepthByChannel(appId: string, timeframe: string): string {
+  return `
+fetch user.events, ${timeframeClause(timeframe)}
+${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
+| summarize
+    pageCount = count(),
+    refDomain = first(page.source.url.domain),
+    by: { dt.rum.session.id }
+| fieldsAdd channel = if(isNull(refDomain) or refDomain == "", "Direct",
+    else: if(contains(refDomain, "google") or contains(refDomain, "bing") or contains(refDomain, "yahoo") or contains(refDomain, "duckduckgo"), "Organic Search",
+    else: if(contains(refDomain, "facebook") or contains(refDomain, "instagram") or contains(refDomain, "twitter") or contains(refDomain, "x.com") or contains(refDomain, "linkedin") or contains(refDomain, "tiktok") or contains(refDomain, "pinterest"), "Social",
+    else: "Referral")))
+| summarize
+    sessions    = count(),
+    avgDepth    = avg(pageCount),
+    medianDepth = percentile(pageCount, 50),
+    maxDepth    = max(pageCount),
+    by: { channel }
+| sort sessions desc
+  `.trim();
+}
+
+/**
+ * Top page-to-page transitions (from → to) across all sessions.
+ * Identical to journeyPageFlows but surfaced separately for the AEM page context.
+ */
+export function aemPageTransitions(appId: string, timeframe: string): string {
+  return `
+fetch user.events, ${timeframeClause(timeframe)}
+${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
+| filter isNotNull(page.url.path)
+| sort start_time asc
+| summarize pages = collectArray(page.url.path), by: { dt.rum.session.id }
+| filter arraySize(pages) >= 2
+| expand idx = array(0,1,2,3,4,5,6,7,8,9)
+| filter idx < arraySize(pages) - 1
+| fieldsAdd fromPage = arrayElement(pages, idx), toPage = arrayElement(pages, idx + 1)
+| summarize transitions = count(), by: { fromPage, toPage }
+| sort transitions desc
+| limit 30
+  `.trim();
+}
