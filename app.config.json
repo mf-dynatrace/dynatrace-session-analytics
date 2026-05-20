@@ -1,5 +1,5 @@
 {
-  "environmentUrl": "https://ywo11236.apps.dynatrace.com",
+  "environmentUrl": "https://demo.apps.dynatrace.com",
   "build": {
     "index": "ui/index.html",
     "sourceRoot": "./"
