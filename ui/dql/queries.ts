@@ -73,6 +73,125 @@ function timeframeClause(timeframe: string): string {
  * Bounce rate = sessions with only 1 navigation event.
  * Avg duration = average time between first and last event in a session.
  */
+
+// ── Global filter injection ───────────────────────────────────────────────────
+//
+// Fields available on user.sessions only (session-level aggregates):
+//   error.count, navigation_count, characteristics.has_replay
+// Fields available on both user.sessions and user.events (inherited context):
+//   device.type, browser.name, os.name, geo.country.iso_code
+//
+// Strategy:
+//   user.sessions queries → inject all filter conditions directly.
+//   user.events queries   → split filter:
+//     • event-safe conditions (device.type etc.) → inject directly
+//     • session-only conditions (error.count etc.) → add a `lookup` subquery
+//       that pre-selects session IDs matching those conditions, then filters
+//       the events to only those sessions.
+
+const SESSION_ONLY_FIELDS = ["error.count", "navigation_count", "characteristics.has_replay"];
+// URL conditions reference user.events fields — need special handling in user.sessions queries
+const URL_ONLY_FIELDS = ["page.url.path", "page.url.domain", "page.url.full"];
+
+function isSessionOnlyCondition(cond: string): boolean {
+  return SESSION_ONLY_FIELDS.some(f => cond.includes(f));
+}
+
+function isUrlOnlyCondition(cond: string): boolean {
+  return URL_ONLY_FIELDS.some(f => cond.includes(f));
+}
+
+/** Insert `clause` after the last | filter line (before any aggregation). */
+function injectClause(dql: string, clause: string): string {
+  const lines = dql.split("\n");
+  let lastFilterIdx = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const t = lines[i].trim();
+    if (t.startsWith("| filter") || t.startsWith("| lookup")) lastFilterIdx = i;
+    if (t.startsWith("| summarize") || t.startsWith("| makeTimeseries") ||
+        t.startsWith("| fields") || t.startsWith("| sort") || t.startsWith("| limit")) break;
+  }
+  const insertAt = lastFilterIdx >= 0 ? lastFilterIdx + 1 : 1;
+  lines.splice(insertAt, 0, clause);
+  return lines.join("\n");
+}
+
+/**
+ * Injects a global segment filter into any DQL query string.
+ * Works correctly for both user.sessions and user.events queries.
+ * Safe to call with an empty/undefined filter — returns the query unchanged.
+ */
+export function withFilter(dql: string, filter?: string): string {
+  if (!filter?.trim()) return dql;
+
+  const conditions = filter.trim().split(/\s+AND\s+/i).map(c => c.trim()).filter(Boolean);
+
+  // ── user.sessions: inject session-safe conditions; URL conditions need an events sub-lookup ──
+  if (dql.includes("fetch user.sessions")) {
+    const sessionSafe = conditions.filter(c => !isUrlOnlyCondition(c));
+    const urlOnly     = conditions.filter(c =>  isUrlOnlyCondition(c));
+
+    let result = dql;
+    if (sessionSafe.length > 0) {
+      result = injectClause(result, `| filter ${sessionSafe.join(" AND ")}`);
+    }
+    if (urlOnly.length > 0) {
+      const tfMatch = result.match(/fetch user\.sessions,\s*(.+?)(?:\n|$)/);
+      const tf = tfMatch ? tfMatch[1].trim() : "from:now()-24h";
+      const appMatch = result.match(/in\("([^"]+)",\s*dt\.rum\.application\.entities\)/);
+      const appLine  = appMatch
+        ? `| filter in("${appMatch[1]}", dt.rum.application.entities)\n  `
+        : "";
+      const urlFilter = urlOnly.join(" AND ");
+      const subquery = `fetch user.events, ${tf}\n  ${appLine}| filter ${urlFilter}\n  | summarize by: { dt.rum.session.id }`;
+      const lookupClause =
+        `| lookup [\n  ${subquery}\n], sourceField: dt.rum.session.id, lookupField: dt.rum.session.id\n| filter isNotNull(lookup.dt.rum.session.id)`;
+      result = injectClause(result, lookupClause);
+    }
+    return result;
+  }
+
+  // ── user.events: split and handle each category ────────────────────────────
+  if (dql.includes("fetch user.events")) {
+    let result = dql;
+
+    // URL-only conditions are event-safe; session-only conditions need a sub-lookup
+    const eventSafe    = conditions.filter(c => !isSessionOnlyCondition(c));
+    const sessionOnly  = conditions.filter(c =>  isSessionOnlyCondition(c));
+
+    // 1. Event-safe conditions → inject directly
+    if (eventSafe.length > 0) {
+      result = injectClause(result, `| filter ${eventSafe.join(" AND ")}`);
+    }
+
+    // 2. Session-only conditions → lookup against user.sessions
+    if (sessionOnly.length > 0) {
+      // Extract timeframe from the fetch line
+      const tfMatch = result.match(/fetch user\.events,\s*(.+?)(?:\n|$)/);
+      const tf = tfMatch ? tfMatch[1].trim() : "from:now()-24h";
+
+      // Extract app entity ID (if present) to scope the sessions subquery
+      const appMatch = result.match(/dt\.rum\.application\.entity\s*==\s*"([^"]+)"/);
+      const appLine  = appMatch
+        ? `| filter in("${appMatch[1]}", dt.rum.application.entities)\n  `
+        : "";
+
+      const sessionFilter = sessionOnly.join(" AND ");
+      const subquery = `fetch user.sessions, ${tf}\n  ${appLine}| filter ${sessionFilter}\n  | fields dt.rum.session.id`;
+
+      const lookupClause =
+        `| lookup [\n  ${subquery}\n], sourceField: dt.rum.session.id, lookupField: dt.rum.session.id\n| filter isNotNull(lookup.dt.rum.session.id)`;
+
+      result = injectClause(result, lookupClause);
+    }
+
+    return result;
+  }
+
+  // Other query types — return unchanged
+  return dql;
+}
+
 export function overviewKPIs(appId: string, timeframe: string): string {
   return `
 fetch user.events, ${timeframeClause(timeframe)}
@@ -881,20 +1000,26 @@ ${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
 // SESSION EXPLORER
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/** Session list with key dimensions */
+/** Session list with key dimensions.
+ *  Uses user.sessions so we can include dt.entity.rum.user.session (needed for
+ *  the Dynatrace intent system to open the correct session in Users & Sessions app).
+ */
 export function sessionList(appId: string, timeframe: string): string {
   return `
-fetch user.events, ${timeframeClause(timeframe)}
-${eventAppFilter(appId)}| filter characteristics.classifier == "navigation"
-| summarize
-    pageViews  = count(),
-    firstPage  = first(page.url.path),
-    lastPage   = last(page.url.path),
-    startTime  = min(start_time),
-    endTime    = max(start_time),
-    errors     = countIf(characteristics.has_error == true),
-    by: { dt.rum.session.id, dt.rum.instance.id, device.type, browser.name, geo.country.iso_code }
-| fieldsAdd durationSec = toDouble(endTime - startTime) / 1000000000.0
+fetch user.sessions, ${timeframeClause(timeframe)}
+${sessionAppFilter(appId)}| fields
+    startTime  = start_time,
+    pageViews  = navigation_count,
+    durationSec = toDouble(duration) / 1e9,
+    errors     = error.count,
+    dt.rum.session.id,
+    dt.entity.rum.user.session,
+    dt.rum.instance.id,
+    device.type,
+    browser.name,
+    os.name,
+    geo.country.iso_code,
+    hasReplay  = characteristics.has_replay
 | sort startTime desc
 | limit 100
   `.trim();

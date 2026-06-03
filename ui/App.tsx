@@ -11,10 +11,294 @@
  *   └───────────┴──────────────────────────────────────────────┘
  */
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { GA4_COLORS, GA4_FONTS, GA4_SPACING, GA4_GLOBAL_CSS } from "./styles/ga4Theme";
 import { useApplications, RumApplication } from "./hooks/useApplications";
 import { DynatraceLoader } from "./components/DynatraceLoader";
+import { useSavedSegments } from "./hooks/useSavedSegments";
+import {
+  SegmentState, EMPTY_SEGMENT, COUNTRIES,
+  segmentToFilter, segmentActiveCount, SegmentForm,
+} from "./components/SegmentForm";
+
+const COLOR_A_PILL = "#1a73e8";
+const COLOR_B_PILL = "#e03e2d";
+
+// ── CombinedSegmentPicker ─────────────────────────────────────────────────────
+// Single pill that manages both segment A and (optional) segment B.
+// segmentB === null means compare mode is off.
+
+interface CombinedSegmentPickerProps {
+  segmentA: SegmentState;
+  onChangeA: (s: SegmentState) => void;
+  segmentB: SegmentState | null;
+  onChangeB: (s: SegmentState | null) => void;
+}
+
+function CombinedSegmentPicker({ segmentA, onChangeA, segmentB, onChangeB }: CombinedSegmentPickerProps) {
+  const compareMode = segmentB !== null;
+  const [open, setOpen] = useState(false);
+  const [draftA, setDraftA] = useState<SegmentState>(segmentA);
+  const [draftB, setDraftB] = useState<SegmentState>(segmentB ?? EMPTY_SEGMENT);
+  const [saveMode, setSaveMode] = useState(false);
+  const [saveName, setSaveName] = useState("");
+  const [saving, setSaving] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const { segments: savedSegments, saveSegment, deleteSegment } = useSavedSegments();
+
+  // Close on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  // Sync drafts when panel is closed / values change externally
+  useEffect(() => {
+    if (!open) {
+      setDraftA(segmentA);
+      setDraftB(segmentB ?? EMPTY_SEGMENT);
+    }
+  }, [open, segmentA, segmentB]);
+
+  const countA = segmentActiveCount(segmentA);
+  const countB = segmentB !== null ? segmentActiveCount(segmentB) : 0;
+  const hasActiveA = countA > 0;
+
+  const apply = () => {
+    onChangeA(draftA);
+    if (compareMode) onChangeB(draftB);
+    setOpen(false);
+    setSaveMode(false);
+  };
+
+  const clearAll = () => {
+    onChangeA(EMPTY_SEGMENT);
+    if (compareMode) onChangeB(EMPTY_SEGMENT);
+    setDraftA(EMPTY_SEGMENT);
+    setDraftB(EMPTY_SEGMENT);
+    setOpen(false);
+    setSaveMode(false);
+  };
+
+  const enableCompare = () => {
+    onChangeB(EMPTY_SEGMENT);
+    setDraftB(EMPTY_SEGMENT);
+  };
+
+  const disableCompare = () => {
+    onChangeB(null);
+    setDraftB(EMPTY_SEGMENT);
+  };
+
+  const handleSave = async () => {
+    if (!saveName.trim()) return;
+    setSaving(true);
+    try {
+      await saveSegment({ name: saveName.trim(), ...draftA });
+      setSaveMode(false);
+      setSaveName("");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const loadSaved = (s: ReturnType<typeof useSavedSegments>["segments"][0], target: "A" | "B" = "A") => {
+    const loaded: SegmentState = {
+      hasErrors: s.hasErrors, isBounced: s.isBounced, hasReplay: s.hasReplay,
+      country: s.country, browser: s.browser, os: s.os,
+      url: s.url ?? "", urlOp: s.urlOp ?? "contains", urlField: s.urlField ?? "path",
+    };
+    if (target === "A") { setDraftA(loaded); onChangeA(loaded); }
+    else { setDraftB(loaded); if (compareMode) onChangeB(loaded); }
+    setOpen(false);
+  };
+
+  // Pill label & style
+  const pillActive = compareMode || hasActiveA;
+  const pillLabel = compareMode
+    ? "A vs B"
+    : hasActiveA ? `Segment (${countA})` : "Segment";
+
+  const pillStyle: React.CSSProperties = {
+    padding: "6px 14px", borderRadius: 16,
+    border: pillActive ? `1.5px solid ${COLOR_A_PILL}` : `1px solid ${GA4_COLORS.border}`,
+    background: pillActive ? `${COLOR_A_PILL}18` : GA4_COLORS.cardBg,
+    color: pillActive ? COLOR_A_PILL : GA4_COLORS.textSecondary,
+    fontSize: 13, fontWeight: pillActive ? 600 : 400,
+    fontFamily: GA4_FONTS.family, cursor: "pointer",
+    display: "flex", alignItems: "center", gap: 6,
+    outline: "none", whiteSpace: "nowrap", transition: "all 0.15s",
+  };
+
+  const dot = (color: string, lbl: string) => (
+    <span style={{
+      width: 15, height: 15, borderRadius: "50%", background: color,
+      color: "#fff", fontSize: 9, fontWeight: 700,
+      display: "inline-flex", alignItems: "center", justifyContent: "center",
+    }}>{lbl}</span>
+  );
+
+  const colHeader = (color: string, lbl: string, title: string) => (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
+      {dot(color, lbl)}
+      <span style={{ fontSize: 13, fontWeight: 600, color }}>{title}</span>
+    </div>
+  );
+
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      {/* Pill button */}
+      <button onClick={() => setOpen(o => !o)} style={pillStyle}>
+        {compareMode ? (
+          <>
+            {dot(COLOR_A_PILL, "A")}
+            <svg width={13} height={13} viewBox="0 0 24 24" fill={COLOR_A_PILL}>
+              <path d="M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z" />
+            </svg>
+            <span style={{ fontSize: 11, color: GA4_COLORS.textTertiary }}>vs</span>
+            {dot(COLOR_B_PILL, "B")}
+            {(countA > 0 || countB > 0) && (
+              <span style={{ fontSize: 11, color: GA4_COLORS.textTertiary }}>
+                ({countA}/{countB})
+              </span>
+            )}
+          </>
+        ) : (
+          <>
+            <svg width={13} height={13} viewBox="0 0 24 24"
+              fill={hasActiveA ? COLOR_A_PILL : GA4_COLORS.textSecondary}>
+              <path d="M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z" />
+            </svg>
+            {pillLabel}
+          </>
+        )}
+        <svg width={10} height={10} viewBox="0 0 24 24"
+          fill={pillActive ? COLOR_A_PILL : GA4_COLORS.textSecondary}
+          style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}>
+          <path d="M7 10l5 5 5-5z" />
+        </svg>
+      </button>
+
+      {/* Dropdown panel */}
+      {open && (
+        <div style={{
+          position: "absolute", top: "calc(100% + 8px)", right: 0, zIndex: 1000,
+          background: GA4_COLORS.cardBg, border: `1px solid ${GA4_COLORS.border}`,
+          borderRadius: 8, boxShadow: "0 4px 20px rgba(0,0,0,0.15)",
+          padding: "16px", width: compareMode ? 920 : 280,
+          overflow: "visible",
+        }}>
+          {compareMode ? (
+            /* Two-column compare layout */
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1px 1fr", gap: "0 16px" }}>
+              <div>
+                {colHeader(COLOR_A_PILL, "A", "Segment A")}
+                <SegmentForm draft={draftA} onDraftChange={setDraftA} accentColor={COLOR_A_PILL} />
+              </div>
+              {/* Vertical divider */}
+              <div style={{ background: GA4_COLORS.border }} />
+              <div>
+                {colHeader(COLOR_B_PILL, "B", "Segment B")}
+                <SegmentForm draft={draftB} onDraftChange={setDraftB} accentColor={COLOR_B_PILL} />
+              </div>
+            </div>
+          ) : (
+            /* Single-column layout */
+            <>
+              <SegmentForm draft={draftA} onDraftChange={setDraftA} accentColor={COLOR_A_PILL} />
+
+              {/* Saved segments */}
+              {savedSegments.length > 0 && (
+                <>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: GA4_COLORS.textTertiary,
+                    textTransform: "uppercase", letterSpacing: "0.8px", margin: "12px 0 6px" }}>
+                    Saved segments
+                  </div>
+                  {savedSegments.map(s => (
+                    <div key={s.objectId} style={{ display: "flex", alignItems: "center",
+                      justifyContent: "space-between", padding: "4px 0" }}>
+                      <button onClick={() => loadSaved(s)} style={{
+                        background: "none", border: "none", padding: 0, cursor: "pointer",
+                        fontSize: 13, color: GA4_COLORS.primary, fontFamily: GA4_FONTS.family,
+                        textAlign: "left",
+                      }}>{s.name}</button>
+                      <button onClick={() => deleteSegment(s.objectId, s.version)} style={{
+                        background: "none", border: "none", cursor: "pointer",
+                        fontSize: 16, color: GA4_COLORS.textTertiary, lineHeight: 1, padding: "0 2px",
+                      }} title="Delete segment">×</button>
+                    </div>
+                  ))}
+                </>
+              )}
+
+              {/* Save as named segment */}
+              {!saveMode ? (
+                <button onClick={() => { setSaveMode(true); setSaveName(""); }}
+                  style={{ marginTop: 12, background: "none", border: "none", cursor: "pointer",
+                    fontSize: 12, color: GA4_COLORS.primary, fontFamily: GA4_FONTS.family,
+                    padding: 0, display: "flex", alignItems: "center", gap: 4 }}>
+                  + Save as segment
+                </button>
+              ) : (
+                <div style={{ marginTop: 10, display: "flex", gap: 6, alignItems: "center" }}>
+                  <input autoFocus type="text" value={saveName}
+                    onChange={e => setSaveName(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter") handleSave(); if (e.key === "Escape") setSaveMode(false); }}
+                    placeholder="Segment name…"
+                    style={{ flex: 1, padding: "5px 8px", borderRadius: 4, fontSize: 13,
+                      border: `1px solid ${GA4_COLORS.primary}`, fontFamily: GA4_FONTS.family,
+                      color: GA4_COLORS.textPrimary, background: GA4_COLORS.pageBg, outline: "none" }}
+                  />
+                  <button onClick={handleSave} disabled={saving || !saveName.trim()} style={{
+                    padding: "5px 10px", borderRadius: 4, border: "none",
+                    background: GA4_COLORS.primary, color: "#fff", fontSize: 12,
+                    fontFamily: GA4_FONTS.family,
+                    cursor: saving ? "wait" : "pointer", opacity: saving ? 0.7 : 1,
+                  }}>{saving ? "…" : "Save"}</button>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Footer: compare toggle + Clear / Apply */}
+          <div style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            marginTop: 14, paddingTop: 10, borderTop: `1px solid ${GA4_COLORS.border}`,
+          }}>
+            {!compareMode ? (
+              <button onClick={enableCompare} style={{
+                background: "none", border: "none", cursor: "pointer",
+                fontSize: 12, color: GA4_COLORS.textSecondary, fontFamily: GA4_FONTS.family,
+                padding: 0, display: "flex", alignItems: "center", gap: 5,
+              }}>⇄ Compare with another segment</button>
+            ) : (
+              <button onClick={disableCompare} style={{
+                background: "none", border: "none", cursor: "pointer",
+                fontSize: 12, color: GA4_COLORS.textTertiary, fontFamily: GA4_FONTS.family,
+                padding: 0, display: "flex", alignItems: "center", gap: 5,
+              }}>✕ Remove comparison</button>
+            )}
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={clearAll} style={{
+                padding: "6px 14px", borderRadius: 4, border: `1px solid ${GA4_COLORS.border}`,
+                background: "transparent", color: GA4_COLORS.textSecondary,
+                fontSize: 13, fontFamily: GA4_FONTS.family, cursor: "pointer",
+              }}>Clear</button>
+              <button onClick={apply} style={{
+                padding: "6px 14px", borderRadius: 4, border: "none",
+                background: GA4_COLORS.primary, color: "#fff",
+                fontSize: 13, fontWeight: 500, fontFamily: GA4_FONTS.family, cursor: "pointer",
+              }}>Apply</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // Pages
 import { OverviewPage }      from "./pages/OverviewPage";
@@ -31,12 +315,13 @@ import { ConversionsPage }   from "./pages/ConversionsPage";
 import { UTMPage }           from "./pages/UTMPage";
 import { SettingsPage }      from "./pages/SettingsPage";
 import { ContentRequestsPage } from "./pages/ContentRequestsPage";
+import { SegmentsPage }     from "./pages/SegmentsPage";
 
 // ── Navigation items ──────────────────────────────────────────────────────────
 
 type PageId = "overview" | "realtime" | "acquisition" | "engagement" | "tech"
-  | "errors" | "journeys" | "sessions" | "vitals" | "retention" | "conversions" | "utm" | "settings"
-  | "aem-requests";
+  | "errors" | "journeys" | "sessions" | "vitals" | "retention" | "conversions" | "utm"
+  | "segments" | "settings" | "aem-requests";
 
 interface NavItem {
   id:    PageId;
@@ -139,6 +424,13 @@ const NAV_ITEMS: NavItem[] = [
     section: "Growth",
   },
   {
+    id: "segments",
+    label: "Segments",
+    // Filter/bookmark icon
+    icon: "M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2zm0 15l-5-2.18L7 18V5h10v13z",
+    section: "Admin",
+  },
+  {
     id: "settings",
     label: "Settings",
     // Gear/cog icon
@@ -169,8 +461,17 @@ export function App() {
   const [activePage, setActivePage] = useState<PageId>("overview");
   const [selectedApp, setSelectedApp] = useState("");
   const [timeframe, setTimeframe] = useState("24h");
+  const [segmentA, setSegmentA] = useState<SegmentState>(EMPTY_SEGMENT);
+  const [segmentB, setSegmentB] = useState<SegmentState | null>(null);
+  const compareMode = segmentB !== null;
   const [refreshKey, setRefreshKey] = useState(0);
   const [sidebarHover, setSidebarHover] = useState<string | null>(null);
+
+  // Combined global DQL filter string — segment A only
+  const globalFilter = segmentToFilter(segmentA);
+
+  // Segment B filter; undefined when compare mode is off
+  const globalFilterB = compareMode ? segmentToFilter(segmentB!) : undefined;
 
   // Custom date range picker state
   const [showCustomPicker, setShowCustomPicker] = useState(false);
@@ -241,7 +542,7 @@ export function App() {
   useEffect(() => {
     triggerLoading();
     return () => { if (loadingTimer.current) clearTimeout(loadingTimer.current); };
-  }, [refreshKey, activePage, timeframe, selectedApp]);
+  }, [refreshKey, activePage, timeframe, selectedApp, globalFilter, globalFilterB]);
 
   const handleCustomApply = () => {
     if (rangeStart && rangeEnd) {
@@ -402,7 +703,7 @@ export function App() {
             fontSize: 11,
             color: "#6d7680",
           }}>
-            User Session Analytics v2.3.5
+            Session Analytics v2.7.3
             <br />
             Dynatrace Gen 3 Grail
           </div>
@@ -455,6 +756,17 @@ export function App() {
 
             {/* Spacer */}
             <div style={{ flex: 1 }} />
+
+            {/* Segment filter (A + optional B compare) */}
+            <CombinedSegmentPicker
+              segmentA={segmentA}
+              onChangeA={setSegmentA}
+              segmentB={segmentB}
+              onChangeB={setSegmentB}
+            />
+
+            {/* Separator */}
+            <div style={{ width: 1, height: 24, background: GA4_COLORS.border, margin: "0 4px" }} />
 
             {/* Time Range Selector */}
             <div style={{ display: "flex", alignItems: "center", gap: 4, position: "relative" }}>
@@ -692,44 +1004,65 @@ export function App() {
             position: "relative",
           }}>
             {globalLoading && <DynatraceLoader />}
+
+            {/* Compare-mode banner for pages that don't support segment comparison */}
+            {compareMode && !["overview", "acquisition", "engagement", "tech", "errors", "journeys"].includes(activePage) && (
+              <div style={{
+                display: "flex", alignItems: "center", gap: 10,
+                padding: "10px 16px", marginBottom: 16, borderRadius: 8,
+                background: "rgba(26, 115, 232, 0.08)",
+                border: "1px solid rgba(26, 115, 232, 0.25)",
+              }}>
+                <svg width={16} height={16} viewBox="0 0 24 24" fill="#1a73e8" style={{ flexShrink: 0 }}>
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z" />
+                </svg>
+                <span style={{ fontSize: 13, color: "#1a73e8" }}>
+                  Compare mode is active — segment comparison is not available on this page.
+                  Data shown reflects <strong>Segment A</strong> only.
+                </span>
+              </div>
+            )}
             {activePage === "overview" && (
-              <OverviewPage appId={selectedApp} timeframe={timeframe} refreshKey={refreshKey} onLoadEnd={stopLoading} />
+              <OverviewPage appId={selectedApp} timeframe={timeframe} globalFilter={globalFilter} globalFilterB={globalFilterB} refreshKey={refreshKey} onLoadEnd={stopLoading} />
             )}
             {activePage === "realtime" && (
-              <RealtimePage appId={selectedApp} refreshKey={refreshKey} onLoadEnd={stopLoading} />
+              <RealtimePage appId={selectedApp} globalFilter={globalFilter} refreshKey={refreshKey} onLoadEnd={stopLoading} />
             )}
             {activePage === "acquisition" && (
-              <AcquisitionPage appId={selectedApp} timeframe={timeframe} refreshKey={refreshKey} onLoadEnd={stopLoading} />
+              <AcquisitionPage appId={selectedApp} timeframe={timeframe} globalFilter={globalFilter} globalFilterB={globalFilterB} refreshKey={refreshKey} onLoadEnd={stopLoading} />
             )}
             {activePage === "engagement" && (
-              <EngagementPage appId={selectedApp} timeframe={timeframe} refreshKey={refreshKey} onLoadEnd={stopLoading} />
+              <EngagementPage appId={selectedApp} timeframe={timeframe} globalFilter={globalFilter} globalFilterB={globalFilterB} refreshKey={refreshKey} onLoadEnd={stopLoading} />
             )}
             {activePage === "tech" && (
-              <TechPage appId={selectedApp} timeframe={timeframe} refreshKey={refreshKey} onLoadEnd={stopLoading} />
+              <TechPage appId={selectedApp} timeframe={timeframe} globalFilter={globalFilter} globalFilterB={globalFilterB} refreshKey={refreshKey} onLoadEnd={stopLoading} />
             )}
             {activePage === "errors" && (
-              <ErrorsPage appId={selectedApp} timeframe={timeframe} refreshKey={refreshKey} onLoading={triggerLoading} onLoadEnd={stopLoading} />
+              <ErrorsPage appId={selectedApp} timeframe={timeframe} globalFilter={globalFilter} globalFilterB={globalFilterB} refreshKey={refreshKey} onLoading={triggerLoading} onLoadEnd={stopLoading} />
             )}
             {activePage === "journeys" && (
-              <JourneysPage appId={selectedApp} timeframe={timeframe} refreshKey={refreshKey} onLoadEnd={stopLoading} />
+              <JourneysPage appId={selectedApp} timeframe={timeframe} globalFilter={globalFilter} globalFilterB={globalFilterB} refreshKey={refreshKey} onLoadEnd={stopLoading} />
             )}
             {activePage === "aem-requests" && (
-              <ContentRequestsPage appId={selectedApp} timeframe={timeframe} refreshKey={refreshKey} onLoadEnd={stopLoading} />
+              <ContentRequestsPage appId={selectedApp} timeframe={timeframe} globalFilter={globalFilter} refreshKey={refreshKey} onLoadEnd={stopLoading} />
             )}
             {activePage === "sessions" && (
-              <SessionExplorerPage appId={selectedApp} timeframe={timeframe} refreshKey={refreshKey} onLoadEnd={stopLoading} />
+              <SessionExplorerPage appId={selectedApp} timeframe={timeframe} globalFilter={globalFilter} refreshKey={refreshKey} onLoadEnd={stopLoading} />
             )}
             {activePage === "vitals" && (
-              <WebVitalsPage appId={selectedApp} timeframe={timeframe} refreshKey={refreshKey} onLoading={triggerLoading} onLoadEnd={stopLoading} />
+              <WebVitalsPage appId={selectedApp} timeframe={timeframe} globalFilter={globalFilter} refreshKey={refreshKey} onLoading={triggerLoading} onLoadEnd={stopLoading} />
             )}
             {activePage === "retention" && (
-              <RetentionPage appId={selectedApp} timeframe={timeframe} refreshKey={refreshKey} onLoadEnd={stopLoading} />
+              <RetentionPage appId={selectedApp} timeframe={timeframe} globalFilter={globalFilter} refreshKey={refreshKey} onLoadEnd={stopLoading} />
             )}
             {activePage === "conversions" && (
-              <ConversionsPage appId={selectedApp} timeframe={timeframe} refreshKey={refreshKey} onLoadEnd={stopLoading} />
+              <ConversionsPage appId={selectedApp} timeframe={timeframe} globalFilter={globalFilter} refreshKey={refreshKey} onLoadEnd={stopLoading} />
             )}
             {activePage === "utm" && (
-              <UTMPage appId={selectedApp} timeframe={timeframe} refreshKey={refreshKey} onLoadEnd={stopLoading} />
+              <UTMPage appId={selectedApp} timeframe={timeframe} globalFilter={globalFilter} refreshKey={refreshKey} onLoadEnd={stopLoading} />
+            )}
+            {activePage === "segments" && (
+              <SegmentsPage onLoadEnd={stopLoading} />
             )}
             {activePage === "settings" && (
               <SettingsPage onLoadEnd={stopLoading} />

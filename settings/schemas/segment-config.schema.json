@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "segment-config",
+  "type": "object",
+  "title": "User segment configuration",
+  "description": "Saves a named segment filter for session analytics",
+  "properties": {
+    "name": {
+      "type": "string",
+      "title": "Segment name",
+      "description": "Human-readable name for this segment"
+    },
+    "hasErrors": {
+      "type": "boolean",
+      "title": "Has errors",
+      "description": "Filter to sessions with errors",
+      "default": false
+    },
+    "isBounced": {
+      "type": "boolean",
+      "title": "Is bounced",
+      "description": "Filter to bounced sessions (1 page or less)",
+      "default": false
+    },
+    "hasReplay": {
+      "type": "boolean",
+      "title": "Has replay",
+      "description": "Filter to sessions with session replay available",
+      "default": false
+    },
+    "country": {
+      "type": "string",
+      "title": "Country",
+      "description": "ISO-2 country code filter (e.g. US, GB, DE)"
+    },
+    "browser": {
+      "type": "string",
+      "title": "Browser",
+      "description": "Browser name filter (e.g. Chrome, Firefox)"
+    },
+    "os": {
+      "type": "string",
+      "title": "Operating system",
+      "description": "OS name filter (e.g. Windows, macOS)"
+    },
+    "url": {
+      "type": "string",
+      "title": "URL value",
+      "description": "URL filter value"
+    },
+    "urlOp": {
+      "type": "string",
+      "title": "URL operator",
+      "enum": ["contains", "not_contains", "equals"],
+      "default": "contains"
+    },
+    "urlField": {
+      "type": "string",
+      "title": "URL field",
+      "enum": ["path", "domain", "full"],
+      "default": "path"
+    }
+  },
+  "required": ["name"]
+}
