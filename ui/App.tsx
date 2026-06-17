@@ -789,30 +789,32 @@ export function App() {
 
             {/* Time Range Selector */}
             <div style={{ display: "flex", alignItems: "center", gap: 4, position: "relative" }}>
-              {TIME_OPTIONS.map(opt => (
-                <button
-                  key={opt.value}
-                  onClick={() => { requestTimeframe(opt.value); setShowCustomPicker(false); }}
-                  style={{
-                    padding: "6px 12px",
-                    borderRadius: 16,
-                    border: timeframe === opt.value
-                      ? `1px solid ${GA4_COLORS.primary}`
-                      : `1px solid transparent`,
-                    background: timeframe === opt.value ? GA4_COLORS.primaryBg : "transparent",
-                    color: timeframe === opt.value ? GA4_COLORS.primary : GA4_COLORS.textSecondary,
-                    fontSize: 13,
-                    fontWeight: timeframe === opt.value ? 500 : 400,
-                    fontFamily: GA4_FONTS.family,
-                    cursor: "pointer",
-                    transition: "all 0.15s",
-                    outline: "none",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {opt.label}
-                </button>
-              ))}
+              <select
+                value={isCustom ? "" : timeframe}
+                onChange={e => { if (e.target.value) { requestTimeframe(e.target.value); setShowCustomPicker(false); } }}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: 16,
+                  border: `1px solid ${!isCustom ? GA4_COLORS.primary : GA4_COLORS.border}`,
+                  background: !isCustom ? GA4_COLORS.primaryBg : "transparent",
+                  color: !isCustom ? GA4_COLORS.primary : GA4_COLORS.textSecondary,
+                  fontSize: 13,
+                  fontWeight: 500,
+                  fontFamily: GA4_FONTS.family,
+                  cursor: "pointer",
+                  outline: "none",
+                  appearance: "none",
+                  WebkitAppearance: "none",
+                  paddingRight: 28,
+                  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='%23999'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E")`,
+                  backgroundRepeat: "no-repeat",
+                  backgroundPosition: "right 10px center",
+                }}
+              >
+                {TIME_OPTIONS.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
 
               {/* Custom range button */}
               <button
