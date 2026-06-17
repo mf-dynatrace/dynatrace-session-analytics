@@ -3,3 +3,4 @@ dist/
 .dt-app/
 .env
 *.log
+MERGE_SUMMARY.md
