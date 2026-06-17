@@ -483,6 +483,10 @@ export function App() {
   // Long-range confirmation modal
   const [pendingTimeframe, setPendingTimeframe] = useState<string | null>(null);
 
+  // Disclaimer modal
+  const [showDisclaimer, setShowDisclaimer] = useState(false);
+  const [dontShowAgain, setDontShowAgain] = useState(false);
+
   // Global loading overlay — shown on refresh, page change, timeframe change
   const [globalLoading, setGlobalLoading] = useState(false);
   const loadingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -519,6 +523,14 @@ export function App() {
 
   const { apps, loading: appsLoading } = useApplications();
 
+  // Check if disclaimer was dismissed
+  useEffect(() => {
+    const dismissed = localStorage.getItem('session-analytics-disclaimer-dismissed');
+    if (!dismissed) {
+      setShowDisclaimer(true);
+    }
+  }, []);
+
   // Auto-select first app when loaded
   useEffect(() => {
     if (apps.length > 0 && !selectedApp) {
@@ -527,6 +539,13 @@ export function App() {
   }, [apps, selectedApp]);
 
   const handleRefresh = () => setRefreshKey(k => k + 1);
+
+  const handleDisclaimerClose = () => {
+    if (dontShowAgain) {
+      localStorage.setItem('session-analytics-disclaimer-dismissed', 'true');
+    }
+    setShowDisclaimer(false);
+  };
 
   // Show/hide loading overlay — pages call stopLoading() when data is ready
   const triggerLoading = () => {
@@ -1070,6 +1089,86 @@ export function App() {
           </main>
         </div>
       </div>
+
+      {/* Disclaimer modal */}
+      {showDisclaimer && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 10000,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          background: "rgba(0,0,0,0.7)", backdropFilter: "blur(2px)",
+        }}>
+          <div style={{
+            background: GA4_COLORS.cardBg,
+            border: `1px solid ${GA4_COLORS.border}`,
+            borderRadius: 12,
+            padding: "32px 36px",
+            maxWidth: 520,
+            width: "90%",
+            boxShadow: "0 12px 40px rgba(0,0,0,0.5)",
+          }}>
+            <div style={{ fontSize: 18, fontWeight: 600, color: GA4_COLORS.textPrimary, marginBottom: 20 }}>
+              IMPORTANT NOTICE
+            </div>
+            <div style={{ fontSize: 15, fontWeight: 600, color: GA4_COLORS.textPrimary, marginBottom: 12 }}>
+              Unofficial Community Application
+            </div>
+            <div style={{ fontSize: 13, color: GA4_COLORS.textSecondary, lineHeight: 1.7, marginBottom: 16 }}>
+              This is <strong>not an official Dynatrace application</strong> and it is not something you can open a support ticket on.
+            </div>
+            <div style={{ fontSize: 13, color: GA4_COLORS.textSecondary, lineHeight: 1.7, marginBottom: 16 }}>
+              You may create an issue on the GitHub repository:
+            </div>
+            <a
+              href="https://github.com/mf-dynatrace/dynatrace-session-analytics"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: "block",
+                fontSize: 13,
+                color: GA4_COLORS.primary,
+                textDecoration: "none",
+                marginBottom: 16,
+                fontFamily: "monospace",
+              }}
+            >
+              github.com/mf-dynatrace/dynatrace-session-analytics
+            </a>
+            <div style={{ fontSize: 13, color: GA4_COLORS.textSecondary, lineHeight: 1.7, marginBottom: 24 }}>
+              Feel free to fork the repository for your own use as well.
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 24, paddingTop: 16, borderTop: `1px solid ${GA4_COLORS.border}` }}>
+              <input
+                type="checkbox"
+                id="disclaimer-checkbox"
+                checked={dontShowAgain}
+                onChange={(e) => setDontShowAgain(e.target.checked)}
+                style={{ cursor: "pointer" }}
+              />
+              <label
+                htmlFor="disclaimer-checkbox"
+                style={{ fontSize: 13, color: GA4_COLORS.textSecondary, cursor: "pointer", userSelect: "none" }}
+              >
+                Don't show this again
+              </label>
+            </div>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button
+                onClick={handleDisclaimerClose}
+                style={{
+                  padding: "10px 24px", borderRadius: 6,
+                  border: "none",
+                  background: GA4_COLORS.primary,
+                  color: "#fff",
+                  fontSize: 13, fontWeight: 500, fontFamily: GA4_FONTS.family,
+                  cursor: "pointer",
+                }}
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Long-range confirmation modal */}
       {pendingTimeframe && (
