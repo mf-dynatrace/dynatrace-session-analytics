@@ -20,6 +20,8 @@ interface OverviewPageProps {
   appId: string;
   timeframe: string;
   refreshKey: number;
+  globalFilter?: string;
+  globalFilterB?: string;
   onLoadEnd?: () => void;
 }
 
@@ -31,7 +33,7 @@ interface KPIs {
   avgDuration: number;
 }
 
-export function OverviewPage({ appId, timeframe, refreshKey, onLoadEnd }: OverviewPageProps) {
+export function OverviewPage({ appId, timeframe, refreshKey, globalFilter, globalFilterB, onLoadEnd }: OverviewPageProps) {
   const [kpis, setKpis] = useState<KPIs | null>(null);
   const [sessionsTrend, setSessionsTrend] = useState<TimeSeriesPoint[]>([]);
   const [usersTrend, setUsersTrend] = useState<TimeSeriesPoint[]>([]);

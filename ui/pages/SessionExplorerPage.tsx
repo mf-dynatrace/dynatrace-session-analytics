@@ -17,6 +17,7 @@ interface SessionExplorerPageProps {
   appId: string;
   timeframe: string;
   refreshKey: number;
+  globalFilter?: string;
   onLoadEnd?: () => void;
 }
 
@@ -28,7 +29,7 @@ function formatDuration(ns: number): string {
   return `${min}m ${sec}s`;
 }
 
-export function SessionExplorerPage({ appId, timeframe, refreshKey, onLoadEnd }: SessionExplorerPageProps) {
+export function SessionExplorerPage({ appId, timeframe, refreshKey, globalFilter, onLoadEnd }: SessionExplorerPageProps) {
   const [sessions, setSessions] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
 

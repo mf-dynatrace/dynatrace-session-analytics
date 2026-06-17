@@ -19,10 +19,12 @@ interface AcquisitionPageProps {
   appId: string;
   timeframe: string;
   refreshKey: number;
+  globalFilter?: string;
+  globalFilterB?: string;
   onLoadEnd?: () => void;
 }
 
-export function AcquisitionPage({ appId, timeframe, refreshKey, onLoadEnd }: AcquisitionPageProps) {
+export function AcquisitionPage({ appId, timeframe, refreshKey, globalFilter, globalFilterB, onLoadEnd }: AcquisitionPageProps) {
   const [channelData, setChannelData] = useState<Record<string, unknown>[]>([]);
   const [sourceData, setSourceData] = useState<Record<string, unknown>[]>([]);
   const [newVsReturning, setNewVsReturning] = useState<{ label: string; value: number }[]>([]);

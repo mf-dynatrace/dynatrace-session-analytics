@@ -22,10 +22,11 @@ interface RetentionPageProps {
   appId: string;
   timeframe: string;
   refreshKey: number;
+  globalFilter?: string;
   onLoadEnd?: () => void;
 }
 
-export function RetentionPage({ appId, timeframe, refreshKey, onLoadEnd }: RetentionPageProps) {
+export function RetentionPage({ appId, timeframe, refreshKey, globalFilter, onLoadEnd }: RetentionPageProps) {
   const [dailyTrend, setDailyTrend] = useState<TimeSeriesPoint[]>([]);
   const [sessionFreq, setSessionFreq] = useState<BarItem[]>([]);
   const [newVsReturn, setNewVsReturn] = useState<{ label: string; value: number }[]>([]);

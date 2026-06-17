@@ -1,5 +1,5 @@
 {
-  "environmentUrl": "https://demo.apps.dynatrace.com",
+  "environmentUrl": "https://ywo11236.apps.dynatrace.com",
   "build": {
     "index": "ui/index.html",
     "sourceRoot": "./"
@@ -7,7 +7,7 @@
   "app": {
     "id": "my.user.session.analytics",
     "name": "User Session Analytics",
-    "version": "2.7.3",
+    "version": "2.7.4",
     "icon": "./icon.svg",
     "description": "User session analytics dashboard powered by Dynatrace Gen 3 Grail data",
     "scopes": [
@@ -44,8 +44,5 @@
         "comment": "Used to gate settings UI to environment admins only"
       }
     ]
-  },
-  "schemas": [
-    "settings/schemas/conversion-config.schema.json"
-  ]
+  }
 }

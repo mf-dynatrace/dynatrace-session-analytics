@@ -36,6 +36,7 @@ interface ContentRequestsPageProps {
   appId:       string;
   timeframe:   string;
   refreshKey:  number;
+  globalFilter?: string;
   onLoadEnd?:  () => void;
 }
 
@@ -216,7 +217,7 @@ function MultiLineTrendChart({
 
 // ── Page component ───────────────────────────────────────────────────────────
 
-export function ContentRequestsPage({ appId, timeframe, refreshKey, onLoadEnd }: ContentRequestsPageProps) {
+export function ContentRequestsPage({ appId, timeframe, refreshKey, globalFilter, onLoadEnd }: ContentRequestsPageProps) {
   const [kpis,         setKpis]         = useState<Record<string, unknown>[]>([]);
   const [chordData,    setChordData]    = useState<Record<string, unknown>[]>([]);
   const [referrers,    setReferrers]    = useState<Record<string, unknown>[]>([]);

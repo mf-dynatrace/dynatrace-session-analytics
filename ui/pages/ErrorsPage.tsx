@@ -19,11 +19,13 @@ interface ErrorsPageProps {
   appId: string;
   timeframe: string;
   refreshKey: number;
+  globalFilter?: string;
+  globalFilterB?: string;
   onLoading?: () => void;
   onLoadEnd?: () => void;
 }
 
-export function ErrorsPage({ appId, timeframe, refreshKey, onLoading, onLoadEnd }: ErrorsPageProps) {
+export function ErrorsPage({ appId, timeframe, refreshKey, globalFilter, globalFilterB, onLoading, onLoadEnd }: ErrorsPageProps) {
   const [totalErrors, setTotalErrors] = useState(0);
   const [affectedSessions, setAffectedSessions] = useState(0);
   const [affectedUsers, setAffectedUsers] = useState(0);

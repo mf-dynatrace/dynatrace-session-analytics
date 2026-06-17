@@ -25,10 +25,11 @@ interface UTMPageProps {
   appId: string;
   timeframe: string;
   refreshKey: number;
+  globalFilter?: string;
   onLoadEnd?: () => void;
 }
 
-export function UTMPage({ appId, timeframe, refreshKey, onLoadEnd }: UTMPageProps) {
+export function UTMPage({ appId, timeframe, refreshKey, globalFilter, onLoadEnd }: UTMPageProps) {
   const [summary, setSummary] = useState<Record<string, unknown>>({});
   const [campaigns, setCampaigns] = useState<Record<string, unknown>[]>([]);
   const [sourceMedium, setSourceMedium] = useState<Record<string, unknown>[]>([]);

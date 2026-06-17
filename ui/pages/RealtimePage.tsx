@@ -19,10 +19,11 @@ import * as Q from "../dql/queries";
 interface RealtimePageProps {
   appId: string;
   refreshKey: number;
+  globalFilter?: string;
   onLoadEnd?: () => void;
 }
 
-export function RealtimePage({ appId, refreshKey, onLoadEnd }: RealtimePageProps) {
+export function RealtimePage({ appId, refreshKey, globalFilter, onLoadEnd }: RealtimePageProps) {
   const [activeUsers, setActiveUsers] = useState(0);
   const [activeSessions, setActiveSessions] = useState(0);
   const [pvPerMinute, setPvPerMinute] = useState<TimeSeriesPoint[]>([]);

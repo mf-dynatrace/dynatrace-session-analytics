@@ -19,10 +19,12 @@ interface EngagementPageProps {
   appId: string;
   timeframe: string;
   refreshKey: number;
+  globalFilter?: string;
+  globalFilterB?: string;
   onLoadEnd?: () => void;
 }
 
-export function EngagementPage({ appId, timeframe, refreshKey, onLoadEnd }: EngagementPageProps) {
+export function EngagementPage({ appId, timeframe, refreshKey, globalFilter, globalFilterB, onLoadEnd }: EngagementPageProps) {
   const [topPages, setTopPages] = useState<Record<string, unknown>[]>([]);
   const [landingPages, setLandingPages] = useState<Record<string, unknown>[]>([]);
   const [events, setEvents] = useState<Record<string, unknown>[]>([]);

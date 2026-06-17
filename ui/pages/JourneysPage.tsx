@@ -19,10 +19,12 @@ interface JourneysPageProps {
   appId: string;
   timeframe: string;
   refreshKey: number;
+  globalFilter?: string;
+  globalFilterB?: string;
   onLoadEnd?: () => void;
 }
 
-export function JourneysPage({ appId, timeframe, refreshKey, onLoadEnd }: JourneysPageProps) {
+export function JourneysPage({ appId, timeframe, refreshKey, globalFilter, globalFilterB, onLoadEnd }: JourneysPageProps) {
   const [flows, setFlows] = useState<Record<string, unknown>[]>([]);
   const [sankeyData, setSankeyData] = useState<Record<string, unknown>[]>([]);
   const [exitPages, setExitPages] = useState<BarItem[]>([]);

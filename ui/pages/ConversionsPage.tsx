@@ -19,10 +19,11 @@ interface ConversionsPageProps {
   appId: string;
   timeframe: string;
   refreshKey: number;
+  globalFilter?: string;
   onLoadEnd?: () => void;
 }
 
-export function ConversionsPage({ appId, timeframe, refreshKey, onLoadEnd }: ConversionsPageProps) {
+export function ConversionsPage({ appId, timeframe, refreshKey, globalFilter, onLoadEnd }: ConversionsPageProps) {
   const [funnel, setFunnel] = useState<BarItem[]>([]);
   const [goalPages, setGoalPages] = useState<Record<string, unknown>[]>([]);
   const [totalSessions, setTotalSessions] = useState(0);

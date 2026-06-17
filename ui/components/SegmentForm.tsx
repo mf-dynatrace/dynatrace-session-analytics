@@ -105,15 +105,15 @@ export function segmentToFilter(s: SegmentState): string {
   if (s.hasErrors) c.push("error.count > 0");
   if (s.isBounced) c.push("navigation_count <= 1");
   if (s.hasReplay) c.push("characteristics.has_replay == true");
-  if (s.country.trim()) c.push(\`geo.country.iso_code == "\${s.country.trim().toUpperCase()}"\`);
-  if (s.browser.trim()) c.push(\`contains(browser.name, "\${s.browser.trim()}")\`);
-  if (s.os.trim()) c.push(\`contains(os.name, "\${s.os.trim()}")\`);
+  if (s.country.trim()) c.push(`geo.country.iso_code == "${s.country.trim().toUpperCase()}"`);
+  if (s.browser.trim()) c.push(`contains(browser.name, "${s.browser.trim()}")`);
+  if (s.os.trim()) c.push(`contains(os.name, "${s.os.trim()}")`);
   if (s.url.trim()) {
     const field = URL_FIELD_MAP[s.urlField ?? "path"];
     const val = s.url.trim();
-    if (s.urlOp === "not_contains") c.push(\`NOT contains(\${field}, "\${val}")\`);
-    else if (s.urlOp === "equals")  c.push(\`\${field} == "\${val}"\`);
-    else                            c.push(\`contains(\${field}, "\${val}")\`);
+    if (s.urlOp === "not_contains") c.push(`NOT contains(${field}, "${val}")`);
+    else if (s.urlOp === "equals")  c.push(`${field} == "${val}"`);
+    else                            c.push(`contains(${field}, "${val}")`);
   }
   return c.join(" AND ");
 }
@@ -130,12 +130,12 @@ export function segmentTags(s: SegmentState): string[] {
   if (s.isBounced)   tags.push("Bounced");
   if (s.hasReplay)   tags.push("Has replay");
   if (s.country)     tags.push(COUNTRIES.find(c => c.code === s.country.toUpperCase())?.name ?? s.country);
-  if (s.browser)     tags.push(\`Browser: \${s.browser}\`);
-  if (s.os)          tags.push(\`OS: \${s.os}\`);
+  if (s.browser)     tags.push(`Browser: ${s.browser}`);
+  if (s.os)          tags.push(`OS: ${s.os}`);
   if (s.url.trim()) {
     const fieldLabel = s.urlField === "domain" ? "Host" : s.urlField === "full" ? "Full URL" : "URL path";
     const opLabel    = s.urlOp === "not_contains" ? "excludes" : s.urlOp === "equals" ? "=" : "contains";
-    tags.push(\`\${fieldLabel} \${opLabel} "\${s.url.trim()}"\`);
+    tags.push(`${fieldLabel} ${opLabel} "${s.url.trim()}"`);
   }
   return tags;
 }
@@ -215,7 +215,7 @@ export function SegmentForm({ draft, onDraftChange, accentColor }: SegmentFormPr
             onClick={() => { setCountryOpen(o => !o); setCountrySearch(""); }}
             style={{
               width: "100%", padding: "5px 8px", borderRadius: 4, fontSize: 13, textAlign: "left",
-              border: \`1px solid \${draft.country ? accentColor : GA4_COLORS.border}\`,
+              border: `1px solid ${draft.country ? accentColor : GA4_COLORS.border}`,
               background: GA4_COLORS.pageBg, fontFamily: GA4_FONTS.family,
               color: draft.country ? GA4_COLORS.textPrimary : GA4_COLORS.textTertiary,
               cursor: "pointer", outline: "none",
@@ -238,17 +238,17 @@ export function SegmentForm({ draft, onDraftChange, accentColor }: SegmentFormPr
           {countryOpen && (
             <div style={{
               position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 3000,
-              background: GA4_COLORS.cardBg, border: \`1px solid \${GA4_COLORS.border}\`,
+              background: GA4_COLORS.cardBg, border: `1px solid ${GA4_COLORS.border}`,
               borderRadius: 6, boxShadow: "0 4px 16px rgba(0,0,0,0.22)",
               maxHeight: 200, display: "flex", flexDirection: "column",
             }}>
-              <div style={{ padding: "6px 8px", borderBottom: \`1px solid \${GA4_COLORS.border}\` }}>
+              <div style={{ padding: "6px 8px", borderBottom: `1px solid ${GA4_COLORS.border}` }}>
                 <input autoFocus type="text" value={countrySearch}
                   onChange={e => setCountrySearch(e.target.value)}
                   placeholder="Search country…"
                   style={{
                     width: "100%", padding: "4px 6px", borderRadius: 4, fontSize: 12,
-                    border: \`1px solid \${GA4_COLORS.border}\`, fontFamily: GA4_FONTS.family,
+                    border: `1px solid ${GA4_COLORS.border}`, fontFamily: GA4_FONTS.family,
                     color: GA4_COLORS.textPrimary, background: GA4_COLORS.pageBg, outline: "none",
                     boxSizing: "border-box",
                   }}
@@ -294,7 +294,7 @@ export function SegmentForm({ draft, onDraftChange, accentColor }: SegmentFormPr
             placeholder={key === "browser" ? "Chrome, Firefox…" : "Windows, macOS…"}
             style={{
               flex: 1, padding: "5px 8px", borderRadius: 4, fontSize: 13,
-              border: \`1px solid \${GA4_COLORS.border}\`, fontFamily: GA4_FONTS.family,
+              border: `1px solid ${GA4_COLORS.border}`, fontFamily: GA4_FONTS.family,
               color: GA4_COLORS.textPrimary, background: GA4_COLORS.pageBg, outline: "none",
             }}
           />
@@ -312,7 +312,7 @@ export function SegmentForm({ draft, onDraftChange, accentColor }: SegmentFormPr
           onChange={e => onDraftChange({ ...draft, urlField: e.target.value as UrlField })}
           style={{
             padding: "5px 6px", borderRadius: 4, fontSize: 12,
-            border: \`1px solid \${GA4_COLORS.border}\`, fontFamily: GA4_FONTS.family,
+            border: `1px solid ${GA4_COLORS.border}`, fontFamily: GA4_FONTS.family,
             color: GA4_COLORS.textPrimary, background: GA4_COLORS.pageBg, outline: "none",
             flexShrink: 0,
           }}
@@ -327,7 +327,7 @@ export function SegmentForm({ draft, onDraftChange, accentColor }: SegmentFormPr
           onChange={e => onDraftChange({ ...draft, urlOp: e.target.value as UrlOp })}
           style={{
             padding: "5px 6px", borderRadius: 4, fontSize: 12,
-            border: \`1px solid \${GA4_COLORS.border}\`, fontFamily: GA4_FONTS.family,
+            border: `1px solid ${GA4_COLORS.border}`, fontFamily: GA4_FONTS.family,
             color: GA4_COLORS.textPrimary, background: GA4_COLORS.pageBg, outline: "none",
             flexShrink: 0,
           }}
@@ -344,7 +344,7 @@ export function SegmentForm({ draft, onDraftChange, accentColor }: SegmentFormPr
           placeholder="/checkout, example.com…"
           style={{
             flex: 1, padding: "5px 8px", borderRadius: 4, fontSize: 13,
-            border: \`1px solid \${draft.url?.trim() ? accentColor : GA4_COLORS.border}\`,
+            border: `1px solid ${draft.url?.trim() ? accentColor : GA4_COLORS.border}`,
             fontFamily: GA4_FONTS.family,
             color: GA4_COLORS.textPrimary, background: GA4_COLORS.pageBg, outline: "none",
           }}

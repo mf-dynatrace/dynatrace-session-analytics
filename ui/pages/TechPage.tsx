@@ -18,10 +18,12 @@ interface TechPageProps {
   appId: string;
   timeframe: string;
   refreshKey: number;
+  globalFilter?: string;
+  globalFilterB?: string;
   onLoadEnd?: () => void;
 }
 
-export function TechPage({ appId, timeframe, refreshKey, onLoadEnd }: TechPageProps) {
+export function TechPage({ appId, timeframe, refreshKey, globalFilter, globalFilterB, onLoadEnd }: TechPageProps) {
   const [browsers, setBrowsers] = useState<Record<string, unknown>[]>([]);
   const [osList, setOsList] = useState<Record<string, unknown>[]>([]);
   const [devices, setDevices] = useState<{ label: string; value: number }[]>([]);

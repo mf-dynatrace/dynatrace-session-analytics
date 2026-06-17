@@ -1,65 +1,95 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "segment-config",
-  "type": "object",
-  "title": "User segment configuration",
+  "$schema": "https://developer.dynatrace.com/docs-assets/schema_strict_apps.json",
+  "dynatrace": "1",
+  "schemaId": "segment-config",
+  "version": "0.0.1",
+  "summaryPattern": "{name}",
+  "displayName": "Segment Configuration",
   "description": "Saves a named segment filter for session analytics",
+  "multiObject": true,
+  "maxObjects": 100,
+  "ordered": false,
+  "ownerBasedAccessControl": true,
   "properties": {
     "name": {
-      "type": "string",
-      "title": "Segment name",
-      "description": "Human-readable name for this segment"
+      "displayName": "Segment Name",
+      "description": "Human-readable name for this segment",
+      "type": "text",
+      "nullable": false,
+      "constraints": [
+        {
+          "type": "LENGTH",
+          "maxLength": 100,
+          "minLength": 1
+        }
+      ],
+      "default": ""
     },
     "hasErrors": {
-      "type": "boolean",
-      "title": "Has errors",
+      "displayName": "Has Errors",
       "description": "Filter to sessions with errors",
+      "type": "boolean",
       "default": false
     },
     "isBounced": {
-      "type": "boolean",
-      "title": "Is bounced",
+      "displayName": "Is Bounced",
       "description": "Filter to bounced sessions (1 page or less)",
+      "type": "boolean",
       "default": false
     },
     "hasReplay": {
-      "type": "boolean",
-      "title": "Has replay",
+      "displayName": "Has Replay",
       "description": "Filter to sessions with session replay available",
+      "type": "boolean",
       "default": false
     },
     "country": {
-      "type": "string",
-      "title": "Country",
-      "description": "ISO-2 country code filter (e.g. US, GB, DE)"
+      "displayName": "Country",
+      "description": "ISO-2 country code filter (e.g. US, GB, DE)",
+      "type": "text",
+      "nullable": true
     },
     "browser": {
-      "type": "string",
-      "title": "Browser",
-      "description": "Browser name filter (e.g. Chrome, Firefox)"
+      "displayName": "Browser",
+      "description": "Browser name filter (e.g. Chrome, Firefox)",
+      "type": "text",
+      "nullable": true
     },
     "os": {
-      "type": "string",
-      "title": "Operating system",
-      "description": "OS name filter (e.g. Windows, macOS)"
+      "displayName": "Operating System",
+      "description": "OS name filter (e.g. Windows, macOS)",
+      "type": "text",
+      "nullable": true
     },
     "url": {
-      "type": "string",
-      "title": "URL value",
-      "description": "URL filter value"
+      "displayName": "URL Value",
+      "description": "URL filter value",
+      "type": "text",
+      "nullable": true
     },
     "urlOp": {
-      "type": "string",
-      "title": "URL operator",
-      "enum": ["contains", "not_contains", "equals"],
-      "default": "contains"
+      "displayName": "URL Operator",
+      "description": "URL match operator",
+      "type": "text",
+      "nullable": true,
+      "constraints": [
+        {
+          "type": "LENGTH",
+          "maxLength": 20
+        }
+      ]
     },
     "urlField": {
-      "type": "string",
-      "title": "URL field",
-      "enum": ["path", "domain", "full"],
-      "default": "path"
+      "displayName": "URL Field",
+      "description": "Which part of the URL to match against",
+      "type": "text",
+      "nullable": true,
+      "constraints": [
+        {
+          "type": "LENGTH",
+          "maxLength": 20
+        }
+      ]
     }
-  },
-  "required": ["name"]
+  }
 }

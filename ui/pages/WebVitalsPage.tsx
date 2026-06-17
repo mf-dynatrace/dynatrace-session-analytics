@@ -17,6 +17,7 @@ interface WebVitalsPageProps {
   appId: string;
   timeframe: string;
   refreshKey: number;
+  globalFilter?: string;
   onLoading?: () => void;
   onLoadEnd?: () => void;
 }
@@ -44,7 +45,7 @@ function rateLabel(value: number, good: number, poor: number): string {
   return "Needs improvement";
 }
 
-export function WebVitalsPage({ appId, timeframe, refreshKey, onLoading, onLoadEnd }: WebVitalsPageProps) {
+export function WebVitalsPage({ appId, timeframe, refreshKey, globalFilter, onLoading, onLoadEnd }: WebVitalsPageProps) {
   const [vitals, setVitals] = useState<VitalKPI[]>([]);
   const [samples, setSamples] = useState(0);
   const [trendData, setTrendData] = useState<TimeSeriesPoint[]>([]);
