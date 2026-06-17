@@ -44,5 +44,8 @@
         "comment": "Used to gate settings UI to environment admins only"
       }
     ]
-  }
+  },
+  "schemas": [
+    "settings/schemas/conversion-config.schema.json"
+  ]
 }
