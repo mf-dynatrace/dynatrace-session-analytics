@@ -26,7 +26,7 @@ interface RetentionPageProps {
   onLoadEnd?: () => void;
 }
 
-export function RetentionPage({ appId, timeframe, refreshKey, globalFilter, onLoadEnd }: RetentionPageProps) {
+export function RetentionPage({ appId, timeframe, refreshKey, globalFilter = "", onLoadEnd }: RetentionPageProps) {
   const [dailyTrend, setDailyTrend] = useState<TimeSeriesPoint[]>([]);
   const [sessionFreq, setSessionFreq] = useState<BarItem[]>([]);
   const [newVsReturn, setNewVsReturn] = useState<{ label: string; value: number }[]>([]);
@@ -45,14 +45,14 @@ export function RetentionPage({ appId, timeframe, refreshKey, globalFilter, onLo
     setLoading(true);
     try {
       const results = await executeMultipleDql({
-        daily:     Q.retentionDailyVisitors(appId, timeframe),
-        freq:      Q.retentionSessionFrequency(appId, timeframe),
-        nvr:       Q.retentionNewVsReturning(appId, timeframe),
-        loyalty:   Q.retentionReturningDepth(appId, timeframe),
-        retFreq:   Q.retentionReturningFrequency(appId, timeframe),
-        newQual:   Q.retentionNewVisitorQuality(appId, timeframe),
-        newBrow:   Q.retentionNewByBrowser(appId, timeframe),
-        dow:       Q.retentionDayOfWeek(appId, timeframe),
+        daily:     Q.withFilter(Q.retentionDailyVisitors(appId, timeframe), globalFilter),
+        freq:      Q.withFilter(Q.retentionSessionFrequency(appId, timeframe), globalFilter),
+        nvr:       Q.withFilter(Q.retentionNewVsReturning(appId, timeframe), globalFilter),
+        loyalty:   Q.withFilter(Q.retentionReturningDepth(appId, timeframe), globalFilter),
+        retFreq:   Q.withFilter(Q.retentionReturningFrequency(appId, timeframe), globalFilter),
+        newQual:   Q.withFilter(Q.retentionNewVisitorQuality(appId, timeframe), globalFilter),
+        newBrow:   Q.withFilter(Q.retentionNewByBrowser(appId, timeframe), globalFilter),
+        dow:       Q.withFilter(Q.retentionDayOfWeek(appId, timeframe), globalFilter),
       });
 
       setDailyTrend(extractTimeseries(results.daily));
@@ -124,7 +124,7 @@ export function RetentionPage({ appId, timeframe, refreshKey, globalFilter, onLo
       setLoading(false);
       onLoadEnd?.();
     }
-  }, [appId, timeframe]);
+  }, [appId, timeframe, globalFilter]);
 
   useEffect(() => { fetchData(); }, [fetchData, refreshKey]);
 

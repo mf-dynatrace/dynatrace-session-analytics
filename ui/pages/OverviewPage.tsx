@@ -33,29 +33,49 @@ interface KPIs {
   avgDuration: number;
 }
 
-export function OverviewPage({ appId, timeframe, refreshKey, globalFilter, globalFilterB, onLoadEnd }: OverviewPageProps) {
+export function OverviewPage({ appId, timeframe, refreshKey, globalFilter = "", globalFilterB, onLoadEnd }: OverviewPageProps) {
   const [kpis, setKpis] = useState<KPIs | null>(null);
+  const [kpisB, setKpisB] = useState<KPIs | null>(null);
   const [sessionsTrend, setSessionsTrend] = useState<TimeSeriesPoint[]>([]);
+  const [sessionsTrendB, setSessionsTrendB] = useState<TimeSeriesPoint[]>([]);
   const [usersTrend, setUsersTrend] = useState<TimeSeriesPoint[]>([]);
+  const [usersTrendB, setUsersTrendB] = useState<TimeSeriesPoint[]>([]);
   const [pvTrend, setPvTrend] = useState<TimeSeriesPoint[]>([]);
+  const [pvTrendB, setPvTrendB] = useState<TimeSeriesPoint[]>([]);
   const [channelData, setChannelData] = useState<{ label: string; value: number }[]>([]);
   const [deviceData, setDeviceData] = useState<{ label: string; value: number }[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const isCompare = globalFilterB !== undefined;
+
+  const labelA = globalFilter ? "Segment A" : "All traffic";
+  const labelB = globalFilterB !== undefined
+    ? (globalFilterB ? "Segment B" : "All traffic")
+    : "";
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const results = await executeMultipleDql({
-        kpis:     Q.overviewKPIs(appId, timeframe),
-        sessions: Q.sessionsOverTime(appId, timeframe),
-        users:    Q.usersOverTime(appId, timeframe),
-        pvTrend:  Q.pageViewsOverTime(appId, timeframe),
-        channels: Q.acquisitionByChannel(appId, timeframe),
-        devices:  Q.techDevices(appId, timeframe),
-      });
+      const queriesA: Record<string, string> = {
+        kpis:     Q.withFilter(Q.overviewKPIs(appId, timeframe), globalFilter),
+        sessions: Q.withFilter(Q.sessionsOverTime(appId, timeframe), globalFilter),
+        users:    Q.withFilter(Q.usersOverTime(appId, timeframe), globalFilter),
+        pvTrend:  Q.withFilter(Q.pageViewsOverTime(appId, timeframe), globalFilter),
+        channels: Q.withFilter(Q.acquisitionByChannel(appId, timeframe), globalFilter),
+        devices:  Q.withFilter(Q.techDevices(appId, timeframe), globalFilter),
+      };
 
-      // KPIs (now includes pageViews from the combined events query)
-      const kpiRow = results.kpis[0];
+      const queriesB: Record<string, string> = isCompare ? {
+        kpisB:     Q.withFilter(Q.overviewKPIs(appId, timeframe), globalFilterB!),
+        sessionsB: Q.withFilter(Q.sessionsOverTime(appId, timeframe), globalFilterB!),
+        usersB:    Q.withFilter(Q.usersOverTime(appId, timeframe), globalFilterB!),
+        pvTrendB:  Q.withFilter(Q.pageViewsOverTime(appId, timeframe), globalFilterB!),
+      } : {};
+
+      const results = await executeMultipleDql({ ...queriesA, ...queriesB });
+
+      // Segment A KPIs
+      const kpiRow = results.kpis?.[0];
       if (kpiRow) {
         setKpis({
           users:       Number(kpiRow["users"]) || 0,
@@ -66,19 +86,44 @@ export function OverviewPage({ appId, timeframe, refreshKey, globalFilter, globa
         });
       }
 
-      // Time series - extract from timeseries results
+      // Segment B KPIs
+      if (isCompare) {
+        const kpiRowB = results.kpisB?.[0];
+        if (kpiRowB) {
+          setKpisB({
+            users:       Number(kpiRowB["users"]) || 0,
+            sessions:    Number(kpiRowB["sessions"]) || 0,
+            pageViews:   Number(kpiRowB["pageViews"]) || 0,
+            bounceRate:  Number(kpiRowB["bounceRate"]) || 0,
+            avgDuration: Number(kpiRowB["avgDuration"]) || 0,
+          });
+        }
+      } else {
+        setKpisB(null);
+      }
+
+      // Time series
       setSessionsTrend(extractTimeseries(results.sessions));
       setUsersTrend(extractTimeseries(results.users));
       setPvTrend(extractTimeseries(results.pvTrend));
 
-      // Channel donut
+      if (isCompare) {
+        setSessionsTrendB(extractTimeseries(results.sessionsB ?? []));
+        setUsersTrendB(extractTimeseries(results.usersB ?? []));
+        setPvTrendB(extractTimeseries(results.pvTrendB ?? []));
+      } else {
+        setSessionsTrendB([]);
+        setUsersTrendB([]);
+        setPvTrendB([]);
+      }
+
+      // Breakdown (not compared — showing A only)
       setChannelData(
         results.channels
           .filter(r => r["channel"])
           .map(r => ({ label: String(r["channel"]), value: Number(r["sessions"]) || 0 }))
       );
 
-      // Device donut
       setDeviceData(
         results.devices
           .filter(r => r["device.type"])
@@ -90,7 +135,7 @@ export function OverviewPage({ appId, timeframe, refreshKey, globalFilter, globa
       setLoading(false);
       onLoadEnd?.();
     }
-  }, [appId, timeframe]);
+  }, [appId, timeframe, globalFilter, globalFilterB]);
 
   useEffect(() => { fetchData(); }, [fetchData, refreshKey]);
 
@@ -102,7 +147,9 @@ export function OverviewPage({ appId, timeframe, refreshKey, globalFilter, globa
           Dashboard
         </h1>
         <p style={{ fontSize: 14, color: GA4_COLORS.textSecondary, margin: "4px 0 0" }}>
-          Overview of your web analytics data
+          {isCompare
+            ? `Comparing ${labelA} vs ${labelB}`
+            : "Overview of your web analytics data"}
         </p>
       </div>
 
@@ -112,16 +159,25 @@ export function OverviewPage({ appId, timeframe, refreshKey, globalFilter, globa
           label="Users"
           value={kpis?.users ?? 0}
           loading={loading}
+          compareValue={isCompare ? (kpisB?.users ?? 0) : undefined}
+          compareLabel={isCompare ? labelA : undefined}
+          compareLabelB={isCompare ? labelB : undefined}
         />
         <MetricCard
           label="Sessions"
           value={kpis?.sessions ?? 0}
           loading={loading}
+          compareValue={isCompare ? (kpisB?.sessions ?? 0) : undefined}
+          compareLabel={isCompare ? labelA : undefined}
+          compareLabelB={isCompare ? labelB : undefined}
         />
         <MetricCard
           label="Page Views"
           value={kpis?.pageViews ?? 0}
           loading={loading}
+          compareValue={isCompare ? (kpisB?.pageViews ?? 0) : undefined}
+          compareLabel={isCompare ? labelA : undefined}
+          compareLabelB={isCompare ? labelB : undefined}
         />
         <MetricCard
           label="Bounce Rate"
@@ -129,11 +185,17 @@ export function OverviewPage({ appId, timeframe, refreshKey, globalFilter, globa
           suffix="%"
           loading={loading}
           invertChange
+          compareValue={isCompare ? (kpisB ? kpisB.bounceRate.toFixed(1) : "0") : undefined}
+          compareLabel={isCompare ? labelA : undefined}
+          compareLabelB={isCompare ? labelB : undefined}
         />
         <MetricCard
           label="Avg. Session Duration"
           value={kpis ? formatDuration(kpis.avgDuration) : "0s"}
           loading={loading}
+          compareValue={isCompare ? (kpisB ? formatDuration(kpisB.avgDuration) : "0s") : undefined}
+          compareLabel={isCompare ? labelA : undefined}
+          compareLabelB={isCompare ? labelB : undefined}
         />
       </div>
 
@@ -142,13 +204,25 @@ export function OverviewPage({ appId, timeframe, refreshKey, globalFilter, globa
         <div style={GA4_STYLES.card} className="ga4-animate">
           <div style={GA4_STYLES.sectionTitle}>Users over time</div>
           {loading ? <CardSkeleton height={240} /> : (
-            <AreaChart data={usersTrend} color={GA4_COLORS.chart[0]} label="Users" />
+            <AreaChart
+              data={usersTrend}
+              color={GA4_COLORS.chart[0]}
+              label={isCompare ? labelA : "Users"}
+              dataB={isCompare ? usersTrendB : undefined}
+              labelB={isCompare ? labelB : undefined}
+            />
           )}
         </div>
         <div style={GA4_STYLES.card} className="ga4-animate">
           <div style={GA4_STYLES.sectionTitle}>Sessions over time</div>
           {loading ? <CardSkeleton height={240} /> : (
-            <AreaChart data={sessionsTrend} color={GA4_COLORS.chart[3]} label="Sessions" />
+            <AreaChart
+              data={sessionsTrend}
+              color={GA4_COLORS.chart[3]}
+              label={isCompare ? labelA : "Sessions"}
+              dataB={isCompare ? sessionsTrendB : undefined}
+              labelB={isCompare ? labelB : undefined}
+            />
           )}
         </div>
       </div>
@@ -157,20 +231,30 @@ export function OverviewPage({ appId, timeframe, refreshKey, globalFilter, globa
       <div style={GA4_STYLES.card} className="ga4-animate">
         <div style={GA4_STYLES.sectionTitle}>Page views over time</div>
         {loading ? <CardSkeleton height={240} /> : (
-          <AreaChart data={pvTrend} color={GA4_COLORS.chart[4]} label="Page Views" />
+          <AreaChart
+            data={pvTrend}
+            color={GA4_COLORS.chart[4]}
+            label={isCompare ? labelA : "Page Views"}
+            dataB={isCompare ? pvTrendB : undefined}
+            labelB={isCompare ? labelB : undefined}
+          />
         )}
       </div>
 
-      {/* Breakdown Row: Channels + Devices */}
+      {/* Breakdown Row: Channels + Devices (always segment A) */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: GA4_SPACING.cardGap }}>
         <div style={GA4_STYLES.card} className="ga4-animate">
-          <div style={GA4_STYLES.sectionTitle}>Sessions by channel</div>
+          <div style={GA4_STYLES.sectionTitle}>
+            Sessions by channel{isCompare ? ` — ${labelA}` : ""}
+          </div>
           {loading ? <CardSkeleton height={200} /> : (
             <DonutChart data={channelData} />
           )}
         </div>
         <div style={GA4_STYLES.card} className="ga4-animate">
-          <div style={GA4_STYLES.sectionTitle}>Sessions by device</div>
+          <div style={GA4_STYLES.sectionTitle}>
+            Sessions by device{isCompare ? ` — ${labelA}` : ""}
+          </div>
           {loading ? <CardSkeleton height={200} /> : (
             <DonutChart data={deviceData} colors={[GA4_COLORS.chart[3], GA4_COLORS.chart[0], GA4_COLORS.chart[2]]} />
           )}

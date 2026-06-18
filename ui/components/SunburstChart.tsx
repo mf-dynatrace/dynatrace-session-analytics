@@ -1,21 +1,27 @@
 /**
  * components/SunburstChart.tsx
  *
- * D3-powered two-ring sunburst visualising user journeys.
+ * Multi-ring hierarchical sunburst — shows real navigation paths.
  *
- * Ring layout:
- *   Inner ring  — Entry page categories (where sessions start)
- *   Outer ring  — Exit page categories (where the session ended)
- *   Centre disc — Total sessions count
+ * DEFAULT MODE (selectedPage = null):
+ *   Ring 1 = entry / landing pages
+ *   Ring 2 = 2nd step in the journey
+ *   Ring N = Nth navigation step  (up to MAX_DEPTH = 6)
  *
- * Data: receives per-session page arrays (same format as SankeyChart)
- * and performs all grouping/aggregation client-side.
+ * FOCUS MODE (selectedPage set):
+ *   Centre disc = selected page + visit count
+ *   Ring 1 = pages visited immediately after selectedPage
+ *   Ring N = Nth step after selectedPage
+ *
+ * Arcs inherit their colour from the depth-1 ancestor (entry category).
+ * Each successive ring is a progressively lighter shade of that colour.
+ * Arcs smaller than MIN_FRAC of their parent are merged into "Other".
  */
 
 import React, { useMemo, useState } from "react";
 import { GA4_COLORS } from "../styles/ga4Theme";
 
-// ── Page grouping (mirrors SankeyChart.groupPagePath) ─────────────────────────
+// ── Page grouping (mirrors SankeyChart) ──────────────────────────────────────
 
 function groupPagePath(path: string): string {
   if (!path || path === "/") return "Home";
@@ -24,470 +30,523 @@ function groupPagePath(path: string): string {
   return clean.charAt(0).toUpperCase() + clean.slice(1).replace(/-/g, " ");
 }
 
-// ── Colour palette ────────────────────────────────────────────────────────────
+// ── Colours ───────────────────────────────────────────────────────────────────
 
-const CATEGORY_COLORS: Record<string, { fill: string; exit: string }> = {
-  Home:         { fill: "#1496ff", exit: "#7dcaff" },
-  Menu:         { fill: "#fd8232", exit: "#fdb97e" },
-  "Book a table": { fill: "#73be28", exit: "#aad97a" },
-  Order:        { fill: "#00b9cc", exit: "#66d9e6" },
-  Find:         { fill: "#6f2da8", exit: "#a77acc" },
-  "My account": { fill: "#6366f1", exit: "#a5b4fc" },
-  Offers:       { fill: "#ec4899", exit: "#f9a8d4" },
-  Other:        { fill: "#9ba3ab", exit: "#c4c9ce" },
+const PRESET: Record<string, string> = {
+  Home:           "#1496ff",
+  Menu:           "#fd8232",
+  "Book a table": "#73be28",
+  Order:          "#00b9cc",
+  Find:           "#6f2da8",
+  "My account":   "#6366f1",
+  Offers:         "#ec4899",
+  Other:          "#9ba3ab",
 };
+const EXTRAS = ["#14a8f5", "#9355b7", "#b4dc00", "#eda61e", "#c41425", "#00c896", "#ff6b6b"];
 
-const DEFAULT_COLORS = { fill: "#9ba3ab", exit: "#c4c9ce" };
-const PALETTE_EXTRAS = ["#14a8f5", "#9355b7", "#b4dc00", "#eda61e", "#c41425"];
-
-function getCatColors(category: string, colorMap: Map<string, { fill: string; exit: string }>): { fill: string; exit: string } {
-  if (colorMap.has(category)) return colorMap.get(category)!;
-  const lower = category.toLowerCase();
-  for (const [key, val] of Object.entries(CATEGORY_COLORS)) {
-    if (key.toLowerCase() === lower || lower.startsWith(key.toLowerCase().split(" ")[0])) {
-      colorMap.set(category, val);
-      return val;
+function baseColor(cat: string, map: Map<string, string>): string {
+  if (map.has(cat)) return map.get(cat)!;
+  const lo = cat.toLowerCase();
+  for (const [k, v] of Object.entries(PRESET)) {
+    if (k.toLowerCase() === lo || lo.startsWith(k.toLowerCase().split(" ")[0])) {
+      map.set(cat, v); return v;
     }
   }
-  const idx = colorMap.size % PALETTE_EXTRAS.length;
-  const color = PALETTE_EXTRAS[idx];
-  // Lighten for exit: blend towards white
-  const hex = color.replace("#", "");
-  const r = Math.min(255, parseInt(hex.substring(0, 2), 16) + 80);
-  const g = Math.min(255, parseInt(hex.substring(2, 4), 16) + 80);
-  const b = Math.min(255, parseInt(hex.substring(4, 6), 16) + 80);
-  const exit = `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
-  const result = { fill: color, exit };
-  colorMap.set(category, result);
-  return result;
+  const c = EXTRAS[map.size % EXTRAS.length];
+  map.set(cat, c); return c;
 }
 
-// ── Ring geometry ─────────────────────────────────────────────────────────────
+function lighten(hex: string, t: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const fmt = (n: number) => Math.round(n + (255 - n) * t).toString(16).padStart(2, "0");
+  return `#${fmt(r)}${fmt(g)}${fmt(b)}`;
+}
 
-const R_CENTRE      = 68;
-const R_INNER_END   = 160;
-const R_OUTER_START = 166;
-const R_OUTER_END   = 260;
-const CX            = 280;
-const CY            = 280;
-const SVG_W         = 560;
-const SVG_H         = 560;
-const PAD_ANGLE     = 0.015;
+// ── Geometry ──────────────────────────────────────────────────────────────────
 
-// ── SVG arc path (no d3 dependency) ───────────────────────────────────────────
+const MAX_DEPTH = 6;
+const R_CENTRE  = 65;   // centre disc radius
+const RING_W    = 34;   // width of each ring in px
+const CX        = 270;
+const CY        = 270;
+const SVG_SIZE  = 540;
+const PAD       = 0.013; // gap between arcs (radians)
 
-function describeArc(startAngle: number, endAngle: number, innerR: number, outerR: number): string {
-  // D3 convention: 0 = top (12 o'clock), clockwise
-  const sa = startAngle + PAD_ANGLE / 2;
-  const ea = endAngle - PAD_ANGLE / 2;
-  if (ea <= sa) return "";
+/**
+ * When an arc spans nearly the full circle (start ≈ end point), SVG arc
+ * commands become degenerate and renderers split or drop them.
+ * Detect this and return a special donut path instead.
+ */
+function isNearFullCircle(sa: number, ea: number): boolean {
+  return ea - sa > Math.PI * 2 - 0.06;
+}
 
-  // Convert from D3 convention (0=top, CW) to math convention
-  const cos = (a: number) => Math.cos(a - Math.PI / 2);
-  const sin = (a: number) => Math.sin(a - Math.PI / 2);
+/**
+ * Full-donut path using even-odd fill rule.
+ * Two concentric circles drawn in opposite directions so the inner one
+ * becomes a transparent hole.
+ */
+function donutPath(ir: number, or_: number): string {
+  // Outer circle CW (sweep=1), split at top/bottom to avoid degenerate arc
+  const outer = `M 0 ${-or_} A ${or_} ${or_} 0 1 1 0 ${or_} A ${or_} ${or_} 0 1 1 0 ${-or_}`;
+  // Inner circle CCW (sweep=0) — punches the hole
+  const inner = `M 0 ${-ir} A ${ir} ${ir} 0 1 0 0 ${ir} A ${ir} ${ir} 0 1 0 0 ${-ir}`;
+  return `${outer} ${inner}`;
+}
 
-  const largeArc = ea - sa > Math.PI ? 1 : 0;
-
-  const x1 = outerR * cos(sa);
-  const y1 = outerR * sin(sa);
-  const x2 = outerR * cos(ea);
-  const y2 = outerR * sin(ea);
-  const x3 = innerR * cos(ea);
-  const y3 = innerR * sin(ea);
-  const x4 = innerR * cos(sa);
-  const y4 = innerR * sin(sa);
-
+function arcPath(sa: number, ea: number, ir: number, or_: number): string {
+  const s = sa + PAD / 2;
+  const e = ea - PAD / 2;
+  if (e <= s) return "";
+  const c  = (a: number) => Math.cos(a - Math.PI / 2);
+  const sn = (a: number) => Math.sin(a - Math.PI / 2);
+  const la = e - s > Math.PI ? 1 : 0;
   return [
-    `M ${x1} ${y1}`,
-    `A ${outerR} ${outerR} 0 ${largeArc} 1 ${x2} ${y2}`,
-    `L ${x3} ${y3}`,
-    `A ${innerR} ${innerR} 0 ${largeArc} 0 ${x4} ${y4}`,
-    "Z",
+    `M ${or_ * c(s)} ${or_ * sn(s)}`,
+    `A ${or_} ${or_} 0 ${la} 1 ${or_ * c(e)} ${or_ * sn(e)}`,
+    `L ${ir  * c(e)} ${ir  * sn(e)}`,
+    `A ${ir}  ${ir}  0 ${la} 0 ${ir  * c(s)} ${ir  * sn(s)} Z`,
   ].join(" ");
 }
 
-function pathD(s: number, e: number, ir: number, or_: number): string {
-  return describeArc(s, e, ir, or_);
-}
-
-// ── Arc label ─────────────────────────────────────────────────────────────────
-
-function ArcLabel({ start, end, innerR, outerR, text, fontSize }: {
-  start: number; end: number; innerR: number; outerR: number; text: string; fontSize: number;
+function ArcLabel({ sa, ea, ir, or_, text, fs }: {
+  sa: number; ea: number; ir: number; or_: number; text: string; fs: number;
 }) {
-  const span = end - start;
-  if (span < 0.2) return null;
-  const mid = (start + end) / 2 - Math.PI / 2;
-  const r = (innerR + outerR) / 2;
-  const x = r * Math.cos(mid);
-  const y = r * Math.sin(mid);
-  const rotate = ((mid + Math.PI / 2) * 180) / Math.PI;
-  const adjusted = rotate > 90 && rotate < 270 ? rotate + 180 : rotate;
-  const label = span < 0.35
-    ? text.split(/\s/)[0].slice(0, 8)
-    : text.length > 12 ? text.slice(0, 11) + "…" : text;
-
+  const span = ea - sa;
+  if (span < 0.15) return null;
+  const mid = (sa + ea) / 2 - Math.PI / 2;
+  const r   = (ir + or_) / 2;
+  const rot = (mid + Math.PI / 2) * 180 / Math.PI;
+  const adj = rot > 90 && rot < 270 ? rot + 180 : rot;
+  const lbl = span < 0.27
+    ? text.split(/\s/)[0].slice(0, 5)
+    : text.length > 9 ? text.slice(0, 8) + "…" : text;
   return (
     <text
-      x={x} y={y}
-      fontSize={fontSize}
-      fill="white"
-      fontWeight="700"
-      textAnchor="middle"
-      dominantBaseline="middle"
-      transform={`rotate(${adjusted - 90},${x},${y})`}
-      style={{ pointerEvents: "none", userSelect: "none", textShadow: "0 1px 3px rgba(0,0,0,0.5)" }}
+      x={r * Math.cos(mid)} y={r * Math.sin(mid)}
+      fontSize={fs} fill="white" fontWeight="600"
+      textAnchor="middle" dominantBaseline="middle"
+      transform={`rotate(${adj - 90},${r * Math.cos(mid)},${r * Math.sin(mid)})`}
+      style={{ pointerEvents: "none", userSelect: "none" }}
     >
-      {label}
+      {lbl}
     </text>
   );
 }
 
-// ── Data types ────────────────────────────────────────────────────────────────
+// ── Tree model ────────────────────────────────────────────────────────────────
 
-interface InnerArc { category: string; startAngle: number; endAngle: number; total: number; }
-interface OuterArc { entry: string; exit: string; startAngle: number; endAngle: number; sessions: number; }
+interface TreeNode {
+  name:     string;
+  sessions: number;
+  children: Map<string, TreeNode>;
+}
+const mkNode = (name: string): TreeNode => ({ name, sessions: 0, children: new Map() });
 
-type TooltipState =
-  | { kind: "inner"; category: string; total: number }
-  | { kind: "outer"; entry: string; exit: string; sessions: number };
+/**
+ * Build a path tree from raw session data.
+ *
+ * focusPage = null  → each session contributes pages[0..maxDepth-1]
+ * focusPage = "X"   → for every occurrence of X in a session, contribute
+ *                     the next maxDepth pages after that occurrence
+ */
+function buildTree(
+  rows: Record<string, unknown>[],
+  focusPage: string | null,
+  maxDepth: number,
+): { root: TreeNode; total: number } {
+  const root = mkNode("root");
+  let total  = 0;
 
-// ── Build journey data from session arrays ────────────────────────────────────
+  for (const row of rows) {
+    const raw = row["pages"];
+    if (!Array.isArray(raw) || !raw.length) continue;
+    const pages = raw.map(p => groupPagePath(String(p ?? "")));
 
-interface JourneyPair { entry: string; exit: string; sessions: number; }
+    const seqs: string[][] = focusPage
+      ? pages.flatMap((p, i) =>
+          p === focusPage
+            ? [pages.slice(i + 1, i + 1 + maxDepth).filter(Boolean)]
+            : []
+        ).filter(s => s.length > 0)
+      : [pages.slice(0, maxDepth)];
 
-function buildJourneyPairs(rawData: Record<string, unknown>[]): { pairs: JourneyPair[]; total: number } {
-  const pairMap = new Map<string, number>();
-  let total = 0;
+    for (const seq of seqs) {
+      total++;
+      root.sessions++;
+      let node = root;
+      for (const pg of seq) {
+        if (!node.children.has(pg)) node.children.set(pg, mkNode(pg));
+        node = node.children.get(pg)!;
+        node.sessions++;
+      }
+    }
+  }
+  return { root, total };
+}
 
-  for (const row of rawData) {
-    const pages = row["pages"];
-    if (!Array.isArray(pages) || pages.length < 1) continue;
-    total++;
-    const entry = groupPagePath(String(pages[0] ?? ""));
-    const exit = groupPagePath(String(pages[pages.length - 1] ?? ""));
-    const key = `${entry}|||${exit}`;
-    pairMap.set(key, (pairMap.get(key) ?? 0) + 1);
+// ── Arc layout ────────────────────────────────────────────────────────────────
+
+interface ArcDatum {
+  name:          string;
+  depth:         number;       // 1-based ring index
+  sessions:      number;
+  parentSessions: number;
+  startAngle:    number;
+  endAngle:      number;
+  rootCat:       string;       // depth-1 ancestor → drives colour
+  path:          string[];     // breadcrumb from depth 1
+}
+
+const MIN_FRAC = 0.025; // arcs < 2.5% of parent → merged into "Other"
+
+function layoutArcs(root: TreeNode, maxDepth: number): ArcDatum[] {
+  const out: ArcDatum[] = [];
+
+  function walk(
+    node:    TreeNode,
+    depth:   number,
+    sa:      number,
+    ea:      number,
+    rootCat: string,
+    path:    string[],
+  ) {
+    if (depth > maxDepth || !node.children.size) return;
+    const pTotal = node.sessions;
+    if (!pTotal) return;
+    const span = ea - sa;
+
+    // split children into significant vs small-merged-to-Other
+    const kids = [...node.children.values()].sort((a, b) => b.sessions - a.sessions);
+    const kept: TreeNode[] = [];
+    let otherN = 0;
+    for (const k of kids) {
+      k.sessions / pTotal >= MIN_FRAC ? kept.push(k) : (otherN += k.sessions);
+    }
+    if (otherN > 0) { const o = mkNode("Other"); o.sessions = otherN; kept.push(o); }
+
+    let angle = sa;
+    for (const child of kept) {
+      const cs = angle;
+      const ce = angle + (child.sessions / pTotal) * span;
+      const cr = depth === 1 ? child.name : rootCat;
+      const cp = [...path, child.name];
+      out.push({
+        name: child.name, depth, sessions: child.sessions,
+        parentSessions: pTotal, startAngle: cs, endAngle: ce, rootCat: cr, path: cp,
+      });
+      walk(child, depth + 1, cs, ce, cr, cp);
+      angle = ce;
+    }
   }
 
-  const pairs = [...pairMap.entries()]
-    .map(([key, sessions]) => {
-      const [entry, exit] = key.split("|||");
-      return { entry, exit, sessions };
-    })
-    .sort((a, b) => b.sessions - a.sessions);
-
-  return { pairs, total };
+  walk(root, 1, 0, 2 * Math.PI, "", []);
+  return out;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
 interface SunburstChartProps {
   data: Record<string, unknown>[];
+  selectedPage?: string | null;
+  svgSize?: number;   // rendered width/height in px (default 500); viewBox stays at SVG_SIZE=540
+  compact?: boolean;  // hides ring guide and narrows legend — use in dual-sunburst compare mode
 }
 
-export function SunburstChart({ data: rawData }: SunburstChartProps) {
-  const [tooltip, setTooltip] = useState<TooltipState | null>(null);
-  const [focused, setFocused] = useState<string | null>(null);
+export function SunburstChart({ data: rawData, selectedPage, svgSize = 500, compact = false }: SunburstChartProps) {
+  const [hovered,  setHovered]  = useState<ArcDatum | null>(null);
+  const [mouse,    setMouse]    = useState({ x: 0, y: 0 });
+  const [focused,  setFocused]  = useState<string | null>(null);
 
-  const { pairs, total } = useMemo(() => buildJourneyPairs(rawData), [rawData]);
+  // Reset focus when the page selection changes
+  const prevSelectedPage = React.useRef(selectedPage);
+  if (prevSelectedPage.current !== selectedPage) {
+    prevSelectedPage.current = selectedPage;
+    // flush focus — done via useEffect below to avoid render-time setState
+  }
+  React.useEffect(() => { setFocused(null); }, [selectedPage]);
 
-  // Stable color map
+  const { root, total } = useMemo(
+    () => buildTree(rawData, selectedPage ?? null, MAX_DEPTH),
+    [rawData, selectedPage],
+  );
+  const arcs = useMemo(() => layoutArcs(root, MAX_DEPTH), [root]);
+
   const colorMap = useMemo(() => {
-    const map = new Map<string, { fill: string; exit: string }>();
-    const allCats = new Set<string>();
-    for (const p of pairs) { allCats.add(p.entry); allCats.add(p.exit); }
-    for (const cat of allCats) { getCatColors(cat, map); }
-    return map;
-  }, [pairs]);
+    const m = new Map<string, string>();
+    arcs.filter(a => a.depth === 1).forEach(a => baseColor(a.name, m));
+    return m;
+  }, [arcs]);
 
-  const getColors = (cat: string) => colorMap.get(cat) ?? getCatColors(cat, colorMap);
+  const arcColor = (a: ArcDatum) => {
+    const b = baseColor(a.rootCat || a.name, colorMap);
+    return a.depth === 1 ? b : lighten(b, ((a.depth - 1) / MAX_DEPTH) * 0.58);
+  };
 
-  // Build arc geometry
-  const { innerArcs, outerArcs } = useMemo(() => {
-    const innerArcs: InnerArc[] = [];
-    const outerArcs: OuterArc[] = [];
-    if (!pairs.length) return { innerArcs, outerArcs };
+  const opacity = (a: ArcDatum) =>
+    !focused || a.rootCat === focused || (a.depth === 1 && a.name === focused) ? 1 : 0.10;
 
-    // Aggregate per entry category
-    const entryTotals = new Map<string, number>();
-    for (const p of pairs) entryTotals.set(p.entry, (entryTotals.get(p.entry) ?? 0) + p.sessions);
-
-    // Merge small categories (< 10 sessions) into "Other"
-    const MIN_SESSIONS = 10;
-    for (const [cat, count] of entryTotals) {
-      if (count < MIN_SESSIONS && cat !== "Other") {
-        entryTotals.set("Other", (entryTotals.get("Other") ?? 0) + count);
-        entryTotals.delete(cat);
-      }
-    }
-
-    const grandTotal = [...entryTotals.values()].reduce((s, n) => s + n, 0);
-    if (grandTotal === 0) return { innerArcs, outerArcs };
-
-    const entries = [...entryTotals.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .map(([category, total]) => ({ category, total }));
-
-    // Set of categories that were merged into Other
-    const mergedToOther = new Set<string>();
-    for (const p of pairs) {
-      if (!entryTotals.has(p.entry)) mergedToOther.add(p.entry);
-    }
-
-    let angle = 0;
-    for (const entry of entries) {
-      const arcSpan = (entry.total / grandTotal) * 2 * Math.PI;
-      const startAngle = angle;
-      const endAngle = angle + arcSpan;
-
-      innerArcs.push({ category: entry.category, startAngle, endAngle, total: entry.total });
-
-      // Subdivide: exit arcs within this entry
-      const exits = pairs
-        .filter(p => entry.category === "Other"
-          ? (p.entry === "Other" || mergedToOther.has(p.entry))
-          : p.entry === entry.category)
-        .sort((a, b) => b.sessions - a.sessions);
-
-      let exitAngle = startAngle;
-      for (const seg of exits) {
-        const exitSpan = (seg.sessions / entry.total) * arcSpan;
-        outerArcs.push({
-          entry: seg.entry,
-          exit: seg.exit,
-          startAngle: exitAngle,
-          endAngle: exitAngle + exitSpan,
-          sessions: seg.sessions,
-        });
-        exitAngle += exitSpan;
-      }
-
-      angle = endAngle;
-    }
-
-    return { innerArcs, outerArcs };
-  }, [pairs]);
-
-  const pct = (n: number) => total > 0 ? ((n / total) * 100).toFixed(1) : "0.0";
-
-  const innerOpacity = (cat: string) => !focused || focused === cat ? 1 : 0.18;
-  const outerOpacity = (entry: string) => !focused || focused === entry ? 1 : 0.18;
-
-  if (!pairs.length) {
+  if (!arcs.length) {
     return (
       <div style={{ color: GA4_COLORS.textSecondary, textAlign: "center", padding: 40 }}>
-        Not enough navigation data for sunburst chart
+        {selectedPage
+          ? `No forward navigation data found after "${selectedPage}"`
+          : "Not enough navigation data for sunburst chart"}
       </div>
     );
   }
 
-  // Category legend
-  const legendCategories = [...new Set([...innerArcs.map(a => a.category)])].sort((a, b) => {
-    if (a === "Other") return 1;
-    if (b === "Other") return -1;
-    return a.localeCompare(b);
-  });
+  const depth1 = arcs.filter(a => a.depth === 1).sort((a, b) => b.sessions - a.sessions);
+  const pct    = (n: number, of: number) => of ? ((n / of) * 100).toFixed(1) : "0.0";
+
+  // Tooltip: clamp so it doesn't overflow the right/bottom edge of the 500px svg wrapper
+  const ttLeft = Math.min(mouse.x + 16, 280);
+  const ttTop  = Math.max(mouse.y - 60, 4);
 
   return (
-    <div
-      style={{ display: "flex", alignItems: "flex-start", gap: 24 }}
-    >
-      {/* SVG Sunburst */}
-      <div style={{ flex: "0 0 auto", position: "relative" }}>
+    <div style={{ display: "flex", alignItems: "flex-start", gap: 24 }}>
+      {/* ── SVG ── */}
+      <div
+        style={{ flex: "0 0 auto", position: "relative" }}
+        onMouseMove={e => {
+          const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+          setMouse({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+        }}
+      >
         <svg
-          viewBox={`0 0 ${SVG_W} ${SVG_H}`}
-          style={{ display: "block", width: 560, height: 560 }}
+          viewBox={`0 0 ${SVG_SIZE} ${SVG_SIZE}`}
+          style={{ display: "block", width: svgSize, height: svgSize }}
         >
-          <defs>
-            <filter id="sunburst-shadow" x="-10%" y="-10%" width="120%" height="120%">
-              <feDropShadow dx="0" dy="2" stdDeviation="4" floodColor="rgba(0,0,0,0.08)" />
-            </filter>
-          </defs>
+          {/* background fill */}
+          <circle cx={CX} cy={CY} r={R_CENTRE + MAX_DEPTH * RING_W + 10} fill={GA4_COLORS.pageBg} />
 
-          {/* Background circle */}
-          <circle cx={CX} cy={CY} r={R_OUTER_END + 16} fill={GA4_COLORS.pageBg} />
-
-          {/* Faint guide rings */}
-          {[R_CENTRE, R_INNER_END, R_OUTER_END].map(r => (
-            <circle key={r} cx={CX} cy={CY} r={r} fill="none" stroke={GA4_COLORS.border} strokeWidth="0.5" />
+          {/* guide rings */}
+          {Array.from({ length: MAX_DEPTH + 1 }, (_, i) => (
+            <circle
+              key={i} cx={CX} cy={CY} r={R_CENTRE + i * RING_W}
+              fill="none" stroke={GA4_COLORS.border} strokeWidth="0.5"
+            />
           ))}
 
-          {/* Inner ring: entry pages */}
+          {/* arcs */}
           <g transform={`translate(${CX},${CY})`}>
-            {innerArcs.map(arc => (
-              <g
-                key={arc.category}
-                style={{ opacity: innerOpacity(arc.category), transition: "opacity 0.3s", cursor: "pointer" }}
-                onClick={() => setFocused(f => f === arc.category ? null : arc.category)}
-                onMouseEnter={() => setTooltip({ kind: "inner", category: arc.category, total: arc.total })}
-                onMouseLeave={() => setTooltip(null)}
-              >
-                <path
-                  d={pathD(arc.startAngle, arc.endAngle, R_CENTRE, R_INNER_END)}
-                  fill={getColors(arc.category).fill}
-                  stroke="white"
-                  strokeWidth="1"
-                  filter="url(#sunburst-shadow)"
-                />
-                <ArcLabel
-                  start={arc.startAngle} end={arc.endAngle}
-                  innerR={R_CENTRE} outerR={R_INNER_END}
-                  text={arc.category} fontSize={9}
-                />
-              </g>
-            ))}
-          </g>
-
-          {/* Outer ring: exit pages */}
-          <g transform={`translate(${CX},${CY})`}>
-            {outerArcs.map((arc, i) => {
-              const isBounce = arc.entry === arc.exit;
+            {arcs.map((arc, i) => {
+              const ir  = R_CENTRE + (arc.depth - 1) * RING_W;
+              const or_ = R_CENTRE + arc.depth * RING_W;
               return (
                 <g
                   key={i}
-                  style={{ opacity: outerOpacity(arc.entry), transition: "opacity 0.3s", cursor: "pointer" }}
-                  onMouseEnter={() => setTooltip({ kind: "outer", entry: arc.entry, exit: arc.exit, sessions: arc.sessions })}
-                  onMouseLeave={() => setTooltip(null)}
+                  style={{
+                    opacity: opacity(arc),
+                    transition: "opacity 0.2s",
+                    cursor: arc.depth === 1 ? "pointer" : "default",
+                  }}
+                  onClick={() => {
+                    if (arc.depth === 1) setFocused(f => f === arc.name ? null : arc.name);
+                  }}
+                  onMouseEnter={() => setHovered(arc)}
+                  onMouseLeave={() => setHovered(null)}
                 >
                   <path
-                    d={pathD(arc.startAngle, arc.endAngle, R_OUTER_START, R_OUTER_END)}
-                    fill={isBounce ? `${getColors(arc.entry).fill}44` : getColors(arc.exit).exit}
+                    d={isNearFullCircle(arc.startAngle, arc.endAngle)
+                      ? donutPath(ir, or_)
+                      : arcPath(arc.startAngle, arc.endAngle, ir, or_)}
+                    fill={arcColor(arc)}
+                    fillRule={isNearFullCircle(arc.startAngle, arc.endAngle) ? "evenodd" : undefined}
                     stroke="white"
-                    strokeWidth="0.5"
+                    strokeWidth={arc.depth === 1 ? 1.5 : 0.7}
                   />
                   <ArcLabel
-                    start={arc.startAngle} end={arc.endAngle}
-                    innerR={R_OUTER_START} outerR={R_OUTER_END}
-                    text={arc.exit} fontSize={8}
+                    sa={arc.startAngle} ea={arc.endAngle}
+                    ir={ir} or_={or_} text={arc.name}
+                    fs={arc.depth === 1 ? 9 : 7.5}
                   />
                 </g>
               );
             })}
           </g>
 
-          {/* Centre disc */}
-          <circle cx={CX} cy={CY} r={R_CENTRE - 4} fill="white" stroke={GA4_COLORS.border} strokeWidth="1" />
-          <text x={CX} y={CY - 12} textAnchor="middle" fill={GA4_COLORS.textPrimary}
-            fontSize={focused ? 16 : 22} fontWeight="700">
-            {focused
-              ? (innerArcs.find(a => a.category === focused)?.total ?? 0).toLocaleString()
-              : total.toLocaleString()}
+          {/* centre disc */}
+          <circle cx={CX} cy={CY} r={R_CENTRE - 3} fill="white" stroke={GA4_COLORS.border} strokeWidth="1" />
+          <text x={CX} y={CY - (selectedPage ? 13 : 8)}
+            textAnchor="middle" fill={GA4_COLORS.textPrimary} fontSize={20} fontWeight="700">
+            {total.toLocaleString()}
           </text>
-          <text x={CX} y={CY + 6} textAnchor="middle" fill={GA4_COLORS.textSecondary} fontSize={11}>
-            {focused ? focused : "sessions"}
+          <text x={CX} y={CY + (selectedPage ? 3 : 8)}
+            textAnchor="middle" fill={GA4_COLORS.textSecondary} fontSize={10}>
+            {selectedPage ? "visits" : "sessions"}
           </text>
+          {selectedPage && (
+            <text x={CX} y={CY + 17}
+              textAnchor="middle" fill={GA4_COLORS.textTertiary} fontSize={8}>
+              via {selectedPage.length > 12 ? selectedPage.slice(0, 11) + "…" : selectedPage}
+            </text>
+          )}
           {focused && (
             <text
-              x={CX} y={CY + 22} textAnchor="middle" fill={GA4_COLORS.primary}
-              fontSize={9} style={{ cursor: "pointer" }}
-              onClick={() => setFocused(null)}
+              x={CX} y={CY + (selectedPage ? 28 : 22)}
+              textAnchor="middle" fill={GA4_COLORS.primary} fontSize={8.5}
+              onClick={() => setFocused(null)} style={{ cursor: "pointer" }}
             >
-              ✕ clear
+              ✕ clear focus
             </text>
           )}
         </svg>
 
-        {/* Tooltip anchored to right edge of sunburst */}
-        {tooltip && (
-          <div
-            style={{
-              position: "absolute",
-              right: -12,
-              top: "50%",
-              transform: "translate(100%, -50%)",
-              background: "white",
-              border: `1px solid ${GA4_COLORS.border}`,
-              borderRadius: 8,
-              padding: "10px 14px",
-              maxWidth: 220,
-              pointerEvents: "none",
-              zIndex: 9999,
-              boxShadow: "0 4px 12px rgba(0,0,0,0.12)",
-              fontSize: 12,
-              color: GA4_COLORS.textPrimary,
-              lineHeight: 1.6,
-            }}
-          >
-            {tooltip.kind === "inner" && (
-              <>
-                <div style={{ fontWeight: 700, color: getColors(tooltip.category).fill, marginBottom: 4 }}>
-                  Entry: {tooltip.category}
-                </div>
-                <div>
-                  <strong>{tooltip.total.toLocaleString()}</strong>{" "}
-                  <span style={{ color: GA4_COLORS.textSecondary }}>sessions start here</span>
-                </div>
-                <div style={{ color: GA4_COLORS.textTertiary, fontSize: 11 }}>
-                  {pct(tooltip.total)}% of all sessions
-                </div>
-              </>
-            )}
-            {tooltip.kind === "outer" && (
-              <>
-                <div style={{ fontWeight: 700, marginBottom: 4 }}>
-                  <span style={{ color: getColors(tooltip.entry).fill }}>{tooltip.entry}</span>
-                  {" → "}
-                  <span style={{ color: getColors(tooltip.exit).fill }}>{tooltip.exit}</span>
-                </div>
-                <div>
-                  <strong>{tooltip.sessions.toLocaleString()}</strong>{" "}
-                  <span style={{ color: GA4_COLORS.textSecondary }}>sessions</span>
-                </div>
-                <div style={{ color: GA4_COLORS.textTertiary, fontSize: 11 }}>
-                  {pct(tooltip.sessions)}% of all sessions
-                </div>
-                {tooltip.entry === tooltip.exit && (
-                  <div style={{ color: GA4_COLORS.warning, fontWeight: 600, fontSize: 11, marginTop: 3 }}>
-                    ↩ Single-category session
-                  </div>
-                )}
-              </>
-            )}
+        {/* tooltip */}
+        {hovered && (
+          <div style={{
+            position: "absolute",
+            left: ttLeft, top: ttTop,
+            background: "white",
+            border: `1px solid ${GA4_COLORS.border}`,
+            borderRadius: 8,
+            padding: "10px 14px",
+            width: 210,
+            pointerEvents: "none",
+            zIndex: 9999,
+            boxShadow: "0 4px 12px rgba(0,0,0,0.12)",
+            fontSize: 12,
+            color: GA4_COLORS.textPrimary,
+            lineHeight: 1.65,
+          }}>
+            <div style={{ fontWeight: 700, color: arcColor(hovered), marginBottom: 3 }}>
+              {hovered.name}
+            </div>
+            {/* breadcrumb path */}
+            <div style={{ fontSize: 10, color: GA4_COLORS.textTertiary, marginBottom: 5 }}>
+              {(selectedPage
+                ? [selectedPage, ...hovered.path]
+                : hovered.path
+              ).join(" → ")}
+            </div>
+            <div>
+              <strong>{hovered.sessions.toLocaleString()}</strong>{" "}
+              <span style={{ color: GA4_COLORS.textSecondary }}>
+                {hovered.depth === 1
+                  ? (selectedPage ? "went here next" : "started here")
+                  : "continued here"}
+              </span>
+            </div>
+            <div style={{ color: GA4_COLORS.textTertiary, fontSize: 11, marginTop: 2 }}>
+              {pct(hovered.sessions, hovered.parentSessions)}% of prev. step
+              {" · "}
+              {pct(hovered.sessions, total)}% of all {selectedPage ? "visits" : "sessions"}
+            </div>
           </div>
         )}
       </div>
 
-      {/* Legend — two columns side by side */}
-      <div style={{ flex: 1, minWidth: 280, paddingTop: 20, display: "flex", gap: 24 }}>
-        {/* Inner ring legend */}
-        <div style={{ flex: 1, minWidth: 120 }}>
-          <div style={{ fontSize: 11, color: GA4_COLORS.textSecondary, fontWeight: 600, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.5px" }}>
-            Inner ring — Entry page
-          </div>
-          {legendCategories.map(cat => (
-            <div
-              key={cat}
-              style={{
-                display: "flex", alignItems: "center", gap: 8, marginBottom: 4,
-                cursor: "pointer", opacity: !focused || focused === cat ? 1 : 0.4,
-                transition: "opacity 0.2s",
-              }}
-              onClick={() => setFocused(f => f === cat ? null : cat)}
-            >
-              <div style={{ width: 10, height: 10, borderRadius: 2, background: getColors(cat).fill, flexShrink: 0 }} />
-              <span style={{ fontSize: 12, color: GA4_COLORS.textPrimary }}>{cat}</span>
-              <span style={{ fontSize: 11, color: GA4_COLORS.textSecondary, marginLeft: "auto" }}>
-                {(innerArcs.find(a => a.category === cat)?.total ?? 0).toLocaleString()}
+      {/* ── Legend + ring guide ── */}
+      <div style={{ flex: 1, minWidth: compact ? 90 : 180, maxWidth: compact ? 110 : undefined, paddingTop: 14, overflow: "hidden" }}>
+        {/* Entry page / after-page legend */}
+        <div style={{
+          fontSize: compact ? 10 : 11, color: GA4_COLORS.textSecondary, fontWeight: 600,
+          marginBottom: compact ? 6 : 10, textTransform: "uppercase", letterSpacing: "0.5px",
+        }}>
+          {selectedPage ? `After "${selectedPage}"` : "Entry pages"}
+        </div>
+
+        {depth1.map(arc => (
+          <div
+            key={arc.name}
+            style={{
+              display: "flex", alignItems: "center", gap: compact ? 5 : 8, marginBottom: compact ? 3 : 5,
+              cursor: "pointer",
+              opacity: !focused || focused === arc.name ? 1 : 0.3,
+              transition: "opacity 0.2s",
+            }}
+            onClick={() => setFocused(f => f === arc.name ? null : arc.name)}
+          >
+            <div style={{
+              width: compact ? 8 : 10, height: compact ? 8 : 10, borderRadius: 2,
+              background: arcColor(arc), flexShrink: 0,
+            }} />
+            <span style={{ fontSize: compact ? 11 : 12, color: GA4_COLORS.textPrimary, flex: 1,
+              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {arc.name}
+            </span>
+            {!compact && (
+              <span style={{ fontSize: 11, color: GA4_COLORS.textSecondary }}>
+                {arc.sessions.toLocaleString()}
               </span>
-            </div>
-          ))}
-        </div>
-
-        {/* Outer ring legend */}
-        <div style={{ flex: 1, minWidth: 120 }}>
-          <div style={{ fontSize: 11, color: GA4_COLORS.textSecondary, fontWeight: 600, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.5px" }}>
-            Outer ring — Exit page
+            )}
+            <span style={{
+              fontSize: 10, color: GA4_COLORS.textTertiary,
+              minWidth: 28, textAlign: "right", flexShrink: 0,
+            }}>
+              {pct(arc.sessions, total)}%
+            </span>
           </div>
-          {legendCategories.map(cat => (
-            <div key={`exit-${cat}`} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-              <div style={{ width: 10, height: 10, borderRadius: 2, background: getColors(cat).exit, flexShrink: 0 }} />
-              <span style={{ fontSize: 12, color: GA4_COLORS.textPrimary }}>{cat}</span>
-            </div>
-          ))}
-        </div>
-      </div>
+        ))}
 
+        {/* Ring guide — hidden in compact mode */}
+        {!compact && (
+          <div style={{
+            marginTop: 20,
+            borderTop: `1px solid ${GA4_COLORS.border}`,
+            paddingTop: 12,
+          }}>
+            <div style={{
+              fontSize: 10, color: GA4_COLORS.textTertiary, fontWeight: 600,
+              marginBottom: 7, textTransform: "uppercase",
+            }}>
+              Ring guide
+            </div>
+            {Array.from({ length: MAX_DEPTH }, (_, i) => i + 1).map(d => (
+              <div key={d} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                <div style={{
+                  width: 6, height: 6, borderRadius: "50%",
+                  background: GA4_COLORS.border, flexShrink: 0,
+                }} />
+                <span style={{ fontSize: 10, color: GA4_COLORS.textTertiary }}>
+                  <strong>Ring {d}:</strong>{" "}
+                  {d === 1
+                    ? (selectedPage ? `1st page after ${selectedPage}` : "Entry / landing page")
+                    : `Step ${d}${selectedPage ? ` after ${selectedPage}` : ""}`}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {focused && (
+          <div style={{ marginTop: 12 }}>
+            <button
+              onClick={() => setFocused(null)}
+              style={{
+                background: "transparent",
+                border: `1px solid ${GA4_COLORS.border}`,
+                borderRadius: 6,
+                padding: "4px 10px",
+                fontSize: 11,
+                color: GA4_COLORS.primary,
+                cursor: "pointer",
+              }}
+            >
+              ✕ Clear focus on "{focused}"
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
+}
+
+// ── extractPageCategories — used by JourneysPage ──────────────────────────────
+
+export function extractPageCategories(rawData: Record<string, unknown>[]): string[] {
+  const cats = new Set<string>();
+  for (const row of rawData) {
+    const pages = row["pages"];
+    if (!Array.isArray(pages)) continue;
+    for (const p of pages) cats.add(groupPagePath(String(p ?? "")));
+  }
+  return [...cats].sort((a, b) => {
+    if (a === "Home") return -1;
+    if (b === "Home") return 1;
+    return a.localeCompare(b);
+  });
 }

@@ -29,7 +29,7 @@ function formatDuration(ns: number): string {
   return `${min}m ${sec}s`;
 }
 
-export function SessionExplorerPage({ appId, timeframe, refreshKey, globalFilter, onLoadEnd }: SessionExplorerPageProps) {
+export function SessionExplorerPage({ appId, timeframe, refreshKey, globalFilter = "", onLoadEnd }: SessionExplorerPageProps) {
   const [sessions, setSessions] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -37,7 +37,7 @@ export function SessionExplorerPage({ appId, timeframe, refreshKey, globalFilter
     setLoading(true);
     try {
       const results = await executeMultipleDql({
-        sessions: Q.sessionList(appId, timeframe),
+        sessions: Q.withFilter(Q.sessionList(appId, timeframe), globalFilter),
       });
       setSessions(results.sessions);
     } catch (err) {
@@ -46,7 +46,7 @@ export function SessionExplorerPage({ appId, timeframe, refreshKey, globalFilter
       setLoading(false);
       onLoadEnd?.();
     }
-  }, [appId, timeframe]);
+  }, [appId, timeframe, globalFilter]);
 
   useEffect(() => { fetchData(); }, [fetchData, refreshKey]);
 

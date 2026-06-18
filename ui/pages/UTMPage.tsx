@@ -29,7 +29,7 @@ interface UTMPageProps {
   onLoadEnd?: () => void;
 }
 
-export function UTMPage({ appId, timeframe, refreshKey, globalFilter, onLoadEnd }: UTMPageProps) {
+export function UTMPage({ appId, timeframe, refreshKey, globalFilter = "", onLoadEnd }: UTMPageProps) {
   const [summary, setSummary] = useState<Record<string, unknown>>({});
   const [campaigns, setCampaigns] = useState<Record<string, unknown>[]>([]);
   const [sourceMedium, setSourceMedium] = useState<Record<string, unknown>[]>([]);
@@ -42,12 +42,12 @@ export function UTMPage({ appId, timeframe, refreshKey, globalFilter, onLoadEnd 
     setLoading(true);
     try {
       const results = await executeMultipleDql({
-        summary:      Q.utmSummary(appId, timeframe),
-        campaigns:    Q.utmByCampaign(appId, timeframe),
-        sourceMedium: Q.utmBySourceMedium(appId, timeframe),
-        trend:        Q.utmOverTime(appId, timeframe),
-        landingPages: Q.utmLandingPages(appId, timeframe),
-        contentTerm:  Q.utmByContentTerm(appId, timeframe),
+        summary:      Q.withFilter(Q.utmSummary(appId, timeframe), globalFilter),
+        campaigns:    Q.withFilter(Q.utmByCampaign(appId, timeframe), globalFilter),
+        sourceMedium: Q.withFilter(Q.utmBySourceMedium(appId, timeframe), globalFilter),
+        trend:        Q.withFilter(Q.utmOverTime(appId, timeframe), globalFilter),
+        landingPages: Q.withFilter(Q.utmLandingPages(appId, timeframe), globalFilter),
+        contentTerm:  Q.withFilter(Q.utmByContentTerm(appId, timeframe), globalFilter),
       });
 
       setSummary(results.summary[0] ?? {});
@@ -78,7 +78,7 @@ export function UTMPage({ appId, timeframe, refreshKey, globalFilter, onLoadEnd 
       setLoading(false);
       onLoadEnd?.();
     }
-  }, [appId, timeframe]);
+  }, [appId, timeframe, globalFilter]);
 
   useEffect(() => { fetchData(); }, [fetchData, refreshKey]);
 

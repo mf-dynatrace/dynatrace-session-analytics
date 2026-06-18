@@ -45,7 +45,7 @@ function rateLabel(value: number, good: number, poor: number): string {
   return "Needs improvement";
 }
 
-export function WebVitalsPage({ appId, timeframe, refreshKey, globalFilter, onLoading, onLoadEnd }: WebVitalsPageProps) {
+export function WebVitalsPage({ appId, timeframe, refreshKey, globalFilter = "", onLoading, onLoadEnd }: WebVitalsPageProps) {
   const [vitals, setVitals] = useState<VitalKPI[]>([]);
   const [samples, setSamples] = useState(0);
   const [trendData, setTrendData] = useState<TimeSeriesPoint[]>([]);
@@ -60,10 +60,10 @@ export function WebVitalsPage({ appId, timeframe, refreshKey, globalFilter, onLo
     setTrendLoading(true);
     try {
       const results = await executeMultipleDql({
-        kpis:    Q.webVitalsKPIs(appId, timeframe),
-        trend:   Q.webVitalsOverTime(appId, timeframe, selectedMetric),
-        pages:   Q.webVitalsByPage(appId, timeframe),
-        failing: Q.webVitalsFailingPages(appId, timeframe),
+        kpis:    Q.withFilter(Q.webVitalsKPIs(appId, timeframe), globalFilter),
+        trend:   Q.withFilter(Q.webVitalsOverTime(appId, timeframe, selectedMetric), globalFilter),
+        pages:   Q.withFilter(Q.webVitalsByPage(appId, timeframe), globalFilter),
+        failing: Q.withFilter(Q.webVitalsFailingPages(appId, timeframe), globalFilter),
       });
 
       const kpi = results.kpis[0];
@@ -88,13 +88,13 @@ export function WebVitalsPage({ appId, timeframe, refreshKey, globalFilter, onLo
       setTrendLoading(false);
       onLoadEnd?.();
     }
-  }, [appId, timeframe, selectedMetric]);
+  }, [appId, timeframe, globalFilter, selectedMetric]);
 
   // Re-fetch just the trend when metric selection changes (after initial load)
   const fetchTrend = useCallback(async (metric: string) => {
     setTrendLoading(true);
     try {
-      const records = await executeDql(Q.webVitalsOverTime(appId, timeframe, metric));
+      const records = await executeDql(Q.withFilter(Q.webVitalsOverTime(appId, timeframe, metric), globalFilter));
       setTrendData(extractTimeseries(records));
     } catch (err) {
       console.error("[WebVitals] trend fetch error:", err);
@@ -102,7 +102,7 @@ export function WebVitalsPage({ appId, timeframe, refreshKey, globalFilter, onLo
       setTrendLoading(false);
       onLoadEnd?.();
     }
-  }, [appId, timeframe]);
+  }, [appId, timeframe, globalFilter]);
 
   const handleMetricSelect = useCallback((metric: string) => {
     if (metric === selectedMetric) return;

@@ -217,7 +217,7 @@ function MultiLineTrendChart({
 
 // ── Page component ───────────────────────────────────────────────────────────
 
-export function ContentRequestsPage({ appId, timeframe, refreshKey, globalFilter, onLoadEnd }: ContentRequestsPageProps) {
+export function ContentRequestsPage({ appId, timeframe, refreshKey, globalFilter = "", onLoadEnd }: ContentRequestsPageProps) {
   const [kpis,         setKpis]         = useState<Record<string, unknown>[]>([]);
   const [chordData,    setChordData]    = useState<Record<string, unknown>[]>([]);
   const [referrers,    setReferrers]    = useState<Record<string, unknown>[]>([]);
@@ -235,16 +235,16 @@ export function ContentRequestsPage({ appId, timeframe, refreshKey, globalFilter
     try {
       const [main, chord] = await Promise.all([
         executeMultipleDql({
-          kpis:         Q.aemKPIs(appId, timeframe),
-          referrers:    Q.aemReferrerDomains(appId, timeframe),
-          entryPages:   Q.aemEntryPagesByReferrer(appId, timeframe),
-          channelTrend: Q.aemReferrerChannelOverTime(appId, timeframe),
-          depth:        Q.aemSessionDepthByChannel(appId, timeframe),
-          content:      Q.aemContentPerformance(appId, timeframe),
-          transitions:  Q.aemPageTransitions(appId, timeframe),
+          kpis:         Q.withFilter(Q.aemKPIs(appId, timeframe), globalFilter),
+          referrers:    Q.withFilter(Q.aemReferrerDomains(appId, timeframe), globalFilter),
+          entryPages:   Q.withFilter(Q.aemEntryPagesByReferrer(appId, timeframe), globalFilter),
+          channelTrend: Q.withFilter(Q.aemReferrerChannelOverTime(appId, timeframe), globalFilter),
+          depth:        Q.withFilter(Q.aemSessionDepthByChannel(appId, timeframe), globalFilter),
+          content:      Q.withFilter(Q.aemContentPerformance(appId, timeframe), globalFilter),
+          transitions:  Q.withFilter(Q.aemPageTransitions(appId, timeframe), globalFilter),
         }),
         executeMultipleDql({
-          chord: Q.aemChordFlows(appId, timeframe),
+          chord: Q.withFilter(Q.aemChordFlows(appId, timeframe), globalFilter),
         }),
       ]);
 
@@ -263,7 +263,7 @@ export function ContentRequestsPage({ appId, timeframe, refreshKey, globalFilter
       setChordLoading(false);
       onLoadEnd?.();
     }
-  }, [appId, timeframe]);
+  }, [appId, timeframe, globalFilter]);
 
   useEffect(() => { fetchData(); }, [fetchData, refreshKey]);
 

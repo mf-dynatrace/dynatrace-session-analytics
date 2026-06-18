@@ -23,7 +23,7 @@ interface ConversionsPageProps {
   onLoadEnd?: () => void;
 }
 
-export function ConversionsPage({ appId, timeframe, refreshKey, globalFilter, onLoadEnd }: ConversionsPageProps) {
+export function ConversionsPage({ appId, timeframe, refreshKey, globalFilter = "", onLoadEnd }: ConversionsPageProps) {
   const [funnel, setFunnel] = useState<BarItem[]>([]);
   const [goalPages, setGoalPages] = useState<Record<string, unknown>[]>([]);
   const [totalSessions, setTotalSessions] = useState(0);
@@ -40,9 +40,9 @@ export function ConversionsPage({ appId, timeframe, refreshKey, globalFilter, on
     setLoading(true);
     try {
       const results = await executeMultipleDql({
-        funnel: Q.conversionPageDepthFunnel(appId, timeframe),
-        goals:  Q.conversionGoalPages(appId, timeframe, patterns),
-        rate:   Q.conversionRate(appId, timeframe, patterns),
+        funnel: Q.withFilter(Q.conversionPageDepthFunnel(appId, timeframe), globalFilter),
+        goals:  Q.withFilter(Q.conversionGoalPages(appId, timeframe, patterns), globalFilter),
+        rate:   Q.withFilter(Q.conversionRate(appId, timeframe, patterns), globalFilter),
       });
 
       const funnelRow = results.funnel[0];
@@ -70,7 +70,7 @@ export function ConversionsPage({ appId, timeframe, refreshKey, globalFilter, on
       setLoading(false);
       onLoadEnd?.();
     }
-  }, [appId, timeframe, patterns, settingsLoading]);
+  }, [appId, timeframe, globalFilter, patterns, settingsLoading]);
 
   useEffect(() => { fetchData(); }, [fetchData, refreshKey]);
 

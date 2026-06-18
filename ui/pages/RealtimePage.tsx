@@ -23,7 +23,7 @@ interface RealtimePageProps {
   onLoadEnd?: () => void;
 }
 
-export function RealtimePage({ appId, refreshKey, globalFilter, onLoadEnd }: RealtimePageProps) {
+export function RealtimePage({ appId, refreshKey, globalFilter = "", onLoadEnd }: RealtimePageProps) {
   const [activeUsers, setActiveUsers] = useState(0);
   const [activeSessions, setActiveSessions] = useState(0);
   const [pvPerMinute, setPvPerMinute] = useState<TimeSeriesPoint[]>([]);
@@ -36,10 +36,10 @@ export function RealtimePage({ appId, refreshKey, globalFilter, onLoadEnd }: Rea
     try {
       setLoading(true);
       const results = await executeMultipleDql({
-        active:    Q.realtimeActiveUsers(appId),
-        pvMinute:  Q.realtimePageViewsPerMinute(appId),
-        pages:     Q.realtimeTopPages(appId),
-        countries: Q.realtimeUserCountries(appId),
+        active:    Q.withFilter(Q.realtimeActiveUsers(appId), globalFilter),
+        pvMinute:  Q.withFilter(Q.realtimePageViewsPerMinute(appId), globalFilter),
+        pages:     Q.withFilter(Q.realtimeTopPages(appId), globalFilter),
+        countries: Q.withFilter(Q.realtimeUserCountries(appId), globalFilter),
       });
 
       const activeRow = results.active[0];
@@ -66,7 +66,7 @@ export function RealtimePage({ appId, refreshKey, globalFilter, onLoadEnd }: Rea
       setLoading(false);
       onLoadEnd?.();
     }
-  }, [appId]);
+  }, [appId, globalFilter]);
 
   useEffect(() => {
     fetchData();

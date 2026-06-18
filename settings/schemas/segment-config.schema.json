@@ -2,94 +2,102 @@
   "$schema": "https://developer.dynatrace.com/docs-assets/schema_strict_apps.json",
   "dynatrace": "1",
   "schemaId": "segment-config",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "summaryPattern": "{name}",
-  "displayName": "Segment Configuration",
-  "description": "Saves a named segment filter for session analytics",
+  "displayName": "Saved Segments",
+  "description": "Named audience segments for filtering Session Analytics. Each segment compiles to a DQL filter clause applied globally.",
   "multiObject": true,
-  "maxObjects": 100,
+  "maxObjects": 50,
   "ordered": false,
-  "ownerBasedAccessControl": true,
+  "ownerBasedAccessControl": false,
   "properties": {
     "name": {
       "displayName": "Segment Name",
-      "description": "Human-readable name for this segment",
+      "description": "A short descriptive label (e.g. 'Italian mobile users')",
       "type": "text",
       "nullable": false,
       "constraints": [
-        {
-          "type": "LENGTH",
-          "maxLength": 100,
-          "minLength": 1
-        }
+        { "type": "LENGTH", "maxLength": 80, "minLength": 1 }
       ],
       "default": ""
     },
     "hasErrors": {
-      "displayName": "Has Errors",
-      "description": "Filter to sessions with errors",
+      "displayName": "Sessions with errors only",
       "type": "boolean",
+      "nullable": false,
       "default": false
     },
     "isBounced": {
-      "displayName": "Is Bounced",
-      "description": "Filter to bounced sessions (1 page or less)",
+      "displayName": "Bounced sessions only",
       "type": "boolean",
+      "nullable": false,
       "default": false
     },
     "hasReplay": {
-      "displayName": "Has Replay",
-      "description": "Filter to sessions with session replay available",
+      "displayName": "Sessions with replay only",
       "type": "boolean",
+      "nullable": false,
       "default": false
     },
     "country": {
-      "displayName": "Country",
-      "description": "ISO-2 country code filter (e.g. US, GB, DE)",
+      "displayName": "Country ISO code",
+      "description": "2-letter ISO code, e.g. IT, US, DE. Leave empty to ignore.",
       "type": "text",
-      "nullable": true
+      "nullable": false,
+      "constraints": [
+        { "type": "LENGTH", "maxLength": 10, "minLength": 0 }
+      ],
+      "default": ""
     },
     "browser": {
-      "displayName": "Browser",
-      "description": "Browser name filter (e.g. Chrome, Firefox)",
+      "displayName": "Browser name (contains)",
+      "description": "e.g. Chrome, Firefox, Safari. Leave empty to ignore.",
       "type": "text",
-      "nullable": true
+      "nullable": false,
+      "constraints": [
+        { "type": "LENGTH", "maxLength": 50, "minLength": 0 }
+      ],
+      "default": ""
     },
     "os": {
-      "displayName": "Operating System",
-      "description": "OS name filter (e.g. Windows, macOS)",
+      "displayName": "OS name (contains)",
+      "description": "e.g. Windows, macOS, Android. Leave empty to ignore.",
       "type": "text",
-      "nullable": true
+      "nullable": false,
+      "constraints": [
+        { "type": "LENGTH", "maxLength": 50, "minLength": 0 }
+      ],
+      "default": ""
     },
     "url": {
-      "displayName": "URL Value",
-      "description": "URL filter value",
+      "displayName": "URL value",
+      "description": "Value to match against the URL field selected in urlField. Leave empty to ignore.",
       "type": "text",
-      "nullable": true
+      "nullable": false,
+      "constraints": [
+        { "type": "LENGTH", "maxLength": 200, "minLength": 0 }
+      ],
+      "default": ""
     },
     "urlOp": {
-      "displayName": "URL Operator",
-      "description": "URL match operator",
+      "displayName": "URL operator",
+      "description": "How to match: contains | not_contains | equals",
       "type": "text",
-      "nullable": true,
+      "nullable": false,
       "constraints": [
-        {
-          "type": "LENGTH",
-          "maxLength": 20
-        }
-      ]
+        { "type": "LENGTH", "maxLength": 20, "minLength": 0 }
+      ],
+      "default": "contains"
     },
     "urlField": {
-      "displayName": "URL Field",
-      "description": "Which part of the URL to match against",
+      "displayName": "URL field",
+      "description": "Which URL part to filter: path | domain | full",
       "type": "text",
-      "nullable": true,
+      "nullable": false,
       "constraints": [
-        {
-          "type": "LENGTH",
-          "maxLength": 20
-        }
-      ]
+        { "type": "LENGTH", "maxLength": 10, "minLength": 0 }
+      ],
+      "default": "path"
     }
   }
 }

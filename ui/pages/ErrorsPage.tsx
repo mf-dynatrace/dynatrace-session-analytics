@@ -15,6 +15,9 @@ import { CardSkeleton } from "../components/LoadingState";
 import { executeMultipleDql, executeDql } from "../hooks/useDqlQuery";
 import * as Q from "../dql/queries";
 
+const COLOR_A = "#1a73e8";
+const COLOR_B = "#e03e2d";
+
 interface ErrorsPageProps {
   appId: string;
   timeframe: string;
@@ -25,7 +28,10 @@ interface ErrorsPageProps {
   onLoadEnd?: () => void;
 }
 
-export function ErrorsPage({ appId, timeframe, refreshKey, globalFilter, globalFilterB, onLoading, onLoadEnd }: ErrorsPageProps) {
+export function ErrorsPage({ appId, timeframe, refreshKey, globalFilter = "", globalFilterB, onLoading, onLoadEnd }: ErrorsPageProps) {
+  const compareMode = globalFilterB !== undefined;
+
+  // Segment A state
   const [totalErrors, setTotalErrors] = useState(0);
   const [affectedSessions, setAffectedSessions] = useState(0);
   const [affectedUsers, setAffectedUsers] = useState(0);
@@ -34,61 +40,110 @@ export function ErrorsPage({ appId, timeframe, refreshKey, globalFilter, globalF
   const [errorsByPage, setErrorsByPage] = useState<Record<string, unknown>[]>([]);
   const [errorTypes, setErrorTypes] = useState<ErrorTypeRow[]>([]);
   const [loadDist, setLoadDist] = useState<BarItem[]>([]);
+
+  // Segment B state (compare mode)
+  const [totalErrorsB, setTotalErrorsB] = useState(0);
+  const [affectedSessionsB, setAffectedSessionsB] = useState(0);
+  const [affectedUsersB, setAffectedUsersB] = useState(0);
+  const [errorsTrendB, setErrorsTrendB] = useState<TimeSeriesPoint[]>([]);
+  const [errorsByPageB, setErrorsByPageB] = useState<Record<string, unknown>[]>([]);
+
   const [loading, setLoading] = useState(true);
   const [excludeMarketing, setExcludeMarketing] = useState(true);
+
+  const fetchSegment = async (filter: string) => {
+    const results = await executeMultipleDql({
+      kpis:     Q.withFilter(Q.errorsKPIs(appId, timeframe, excludeMarketing), filter),
+      trend:    Q.withFilter(Q.errorsOverTime(appId, timeframe, excludeMarketing), filter),
+      messages: Q.withFilter(Q.errorsTopMessages(appId, timeframe, excludeMarketing), filter),
+      byPage:   Q.withFilter(Q.errorsByPage(appId, timeframe, excludeMarketing), filter),
+      byType:   Q.withFilter(Q.errorsByType(appId, timeframe, excludeMarketing), filter),
+      loadDist: Q.withFilter(Q.pageLoadDistribution(appId, timeframe), filter),
+    });
+    return results;
+  };
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     onLoading?.();
     try {
-      const results = await executeMultipleDql({
-        kpis:     Q.errorsKPIs(appId, timeframe, excludeMarketing),
-        trend:    Q.errorsOverTime(appId, timeframe, excludeMarketing),
-        messages: Q.errorsTopMessages(appId, timeframe, excludeMarketing),
-        byPage:   Q.errorsByPage(appId, timeframe, excludeMarketing),
-        byType:   Q.errorsByType(appId, timeframe, excludeMarketing),
-        loadDist: Q.pageLoadDistribution(appId, timeframe),
-      });
+      if (compareMode) {
+        const [resA, resB] = await Promise.all([
+          fetchSegment(globalFilter),
+          fetchSegment(globalFilterB!),
+        ]);
 
-      const kpiRow = results.kpis[0];
-      if (kpiRow) {
-        setTotalErrors(Number(kpiRow["totalErrors"]) || 0);
-        setAffectedSessions(Number(kpiRow["affectedSessions"]) || 0);
-        setAffectedUsers(Number(kpiRow["affectedUsers"]) || 0);
-      }
-
-      setErrorsTrend(extractTimeseries(results.trend));
-      setTopMessages(results.messages);
-      setErrorsByPage(results.byPage);
-
-      setErrorTypes(results.byType.map(r => {
-        const errType = String(r["error.type"] ?? "unknown");
-        const errSource = String(r["error.source"] ?? "—");
-        const errors = Number(r["errors"]) || 0;
-        const sessions = Number(r["sessions"]) || 0;
-        return {
-          type: errType,
-          source: errSource === "null" ? "—" : errSource,
-          errors,
-          sessions,
-          impact: classifyImpact(errType, errSource),
-        };
-      }));
-
-      const order = ["<1s", "1-2s", "2-3s", "3-5s", "5-10s", ">10s"];
-      setLoadDist(
-        results.loadDist
-          .filter(r => r["loadBucket"])
+        // Segment A
+        const kpiA = resA.kpis[0];
+        if (kpiA) {
+          setTotalErrors(Number(kpiA["totalErrors"]) || 0);
+          setAffectedSessions(Number(kpiA["affectedSessions"]) || 0);
+          setAffectedUsers(Number(kpiA["affectedUsers"]) || 0);
+        }
+        setErrorsTrend(extractTimeseries(resA.trend));
+        setTopMessages(resA.messages);
+        setErrorsByPage(resA.byPage);
+        setErrorTypes(resA.byType.map(r => {
+          const errType = String(r["error.type"] ?? "unknown");
+          const errSource = String(r["error.source"] ?? "—");
+          return {
+            type: errType, source: errSource === "null" ? "—" : errSource,
+            errors: Number(r["errors"]) || 0, sessions: Number(r["sessions"]) || 0,
+            impact: classifyImpact(errType, errSource),
+          };
+        }));
+        const order = ["<1s", "1-2s", "2-3s", "3-5s", "5-10s", ">10s"];
+        setLoadDist(resA.loadDist.filter(r => r["loadBucket"])
           .sort((a, b) => order.indexOf(String(a["loadBucket"])) - order.indexOf(String(b["loadBucket"])))
-          .map(r => ({ label: String(r["loadBucket"]), value: Number(r["pages"]) || 0 }))
-      );
+          .map(r => ({ label: String(r["loadBucket"]), value: Number(r["pages"]) || 0 })));
+
+        // Segment B
+        const kpiB = resB.kpis[0];
+        if (kpiB) {
+          setTotalErrorsB(Number(kpiB["totalErrors"]) || 0);
+          setAffectedSessionsB(Number(kpiB["affectedSessions"]) || 0);
+          setAffectedUsersB(Number(kpiB["affectedUsers"]) || 0);
+        }
+        setErrorsTrendB(extractTimeseries(resB.trend));
+        setErrorsByPageB(resB.byPage);
+
+      } else {
+        const results = await fetchSegment(globalFilter);
+        const kpiRow = results.kpis[0];
+        if (kpiRow) {
+          setTotalErrors(Number(kpiRow["totalErrors"]) || 0);
+          setAffectedSessions(Number(kpiRow["affectedSessions"]) || 0);
+          setAffectedUsers(Number(kpiRow["affectedUsers"]) || 0);
+        }
+        setErrorsTrend(extractTimeseries(results.trend));
+        setTopMessages(results.messages);
+        setErrorsByPage(results.byPage);
+        setErrorTypes(results.byType.map(r => {
+          const errType = String(r["error.type"] ?? "unknown");
+          const errSource = String(r["error.source"] ?? "—");
+          return {
+            type: errType,
+            source: errSource === "null" ? "—" : errSource,
+            errors: Number(r["errors"]) || 0, sessions: Number(r["sessions"]) || 0,
+            impact: classifyImpact(errType, errSource),
+          };
+        }));
+        const order = ["<1s", "1-2s", "2-3s", "3-5s", "5-10s", ">10s"];
+        setLoadDist(
+          results.loadDist
+            .filter(r => r["loadBucket"])
+            .sort((a, b) => order.indexOf(String(a["loadBucket"])) - order.indexOf(String(b["loadBucket"])))
+            .map(r => ({ label: String(r["loadBucket"]), value: Number(r["pages"]) || 0 }))
+        );
+      }
     } catch (err) {
       console.error("[Errors] fetch error:", err);
     } finally {
       setLoading(false);
       onLoadEnd?.();
     }
-  }, [appId, timeframe, excludeMarketing]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appId, timeframe, globalFilter, globalFilterB, excludeMarketing, compareMode]);
 
   useEffect(() => { fetchData(); }, [fetchData, refreshKey]);
 
@@ -101,6 +156,7 @@ export function ErrorsPage({ appId, timeframe, refreshKey, globalFilter, globalF
           </h1>
           <p style={{ fontSize: 14, color: GA4_COLORS.textSecondary, margin: "4px 0 0" }}>
             JavaScript errors and page load performance
+            {compareMode && <span style={{ marginLeft: 8, fontSize: 12, color: GA4_COLORS.textTertiary }}>— comparing two segments</span>}
           </p>
         </div>
         {/* Marketing/analytics filter toggle */}
@@ -170,16 +226,37 @@ export function ErrorsPage({ appId, timeframe, refreshKey, globalFilter, globalF
 
       {/* KPI Row */}
       <div style={{ display: "flex", gap: GA4_SPACING.cardGap }}>
-        <MetricCard label="Total Errors" value={totalErrors} loading={loading} />
-        <MetricCard label="Affected Sessions" value={affectedSessions} loading={loading} />
-        <MetricCard label="Affected Users" value={affectedUsers} loading={loading} />
+        <MetricCard
+          label="Total Errors" value={totalErrors} loading={loading} invertChange
+          compareValue={compareMode ? totalErrorsB : undefined}
+          compareLabel={compareMode ? "Segment A" : undefined}
+          compareLabelB={compareMode ? "Segment B" : undefined}
+        />
+        <MetricCard
+          label="Affected Sessions" value={affectedSessions} loading={loading} invertChange
+          compareValue={compareMode ? affectedSessionsB : undefined}
+          compareLabel={compareMode ? "Segment A" : undefined}
+          compareLabelB={compareMode ? "Segment B" : undefined}
+        />
+        <MetricCard
+          label="Affected Users" value={affectedUsers} loading={loading} invertChange
+          compareValue={compareMode ? affectedUsersB : undefined}
+          compareLabel={compareMode ? "Segment A" : undefined}
+          compareLabelB={compareMode ? "Segment B" : undefined}
+        />
       </div>
 
       {/* Error trend */}
       <div style={GA4_STYLES.card} className="ga4-animate">
         <div style={GA4_STYLES.sectionTitle}>Errors over time</div>
         {loading ? <CardSkeleton height={240} /> : (
-          <AreaChart data={errorsTrend} color={GA4_COLORS.negative} label="Errors" />
+          <AreaChart
+            data={errorsTrend}
+            color={GA4_COLORS.negative}
+            label={compareMode ? "Segment A" : "Errors"}
+            dataB={compareMode ? errorsTrendB : undefined}
+            labelB={compareMode ? "Segment B" : undefined}
+          />
         )}
       </div>
 
@@ -224,11 +301,13 @@ export function ErrorsPage({ appId, timeframe, refreshKey, globalFilter, globalF
         )}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: GA4_SPACING.cardGap }}>
+      <div style={{ display: "grid", gridTemplateColumns: compareMode ? "1fr" : "1fr 1fr", gap: GA4_SPACING.cardGap }}>
         {/* Errors by page */}
         <div style={GA4_STYLES.card} className="ga4-animate">
           <div style={GA4_STYLES.sectionTitle}>Errors by page</div>
-          {loading ? <CardSkeleton height={320} /> : (
+          {loading ? <CardSkeleton height={320} /> : compareMode ? (
+            <ErrorsByPageCompare dataA={errorsByPage} dataB={errorsByPageB} />
+          ) : (
             <DataTable
               columns={[
                 { key: "page.url.path", label: "Page" },
@@ -243,14 +322,102 @@ export function ErrorsPage({ appId, timeframe, refreshKey, globalFilter, globalF
           )}
         </div>
 
-        {/* Page load distribution */}
-        <div style={GA4_STYLES.card} className="ga4-animate">
-          <div style={GA4_STYLES.sectionTitle}>Page load time distribution</div>
-          {loading ? <CardSkeleton height={320} /> : (
-            <BarChart data={loadDist} color={GA4_COLORS.primary} maxBars={6} />
-          )}
-        </div>
+        {/* Page load distribution — only in single mode */}
+        {!compareMode && (
+          <div style={GA4_STYLES.card} className="ga4-animate">
+            <div style={GA4_STYLES.sectionTitle}>Page load time distribution</div>
+            {loading ? <CardSkeleton height={320} /> : (
+              <BarChart data={loadDist} color={GA4_COLORS.primary} maxBars={6} />
+            )}
+          </div>
+        )}
       </div>
+    </div>
+  );
+}
+
+// ── Errors-by-page A/B table ─────────────────────────────────────────────────
+
+function ErrorsByPageCompare({
+  dataA, dataB,
+}: { dataA: Record<string, unknown>[]; dataB: Record<string, unknown>[] }) {
+  const mapB = new Map(dataB.map(r => [String(r["page.url.path"]), r]));
+  const merged = dataA.map(rowA => {
+    const rowB = mapB.get(String(rowA["page.url.path"])) ?? {};
+    const errA = Number(rowA["errors"]) || 0;
+    const errB = Number((rowB as Record<string, unknown>)["errors"]) || 0;
+    return {
+      page: String(rowA["page.url.path"]),
+      errors_a: errA,
+      errors_b: errB,
+      sessions_a: Number(rowA["sessions"]) || 0,
+      sessions_b: Number((rowB as Record<string, unknown>)["sessions"]) || 0,
+    };
+  });
+
+  if (merged.length === 0) return (
+    <div style={{ padding: 32, textAlign: "center", color: GA4_COLORS.textTertiary }}>No data</div>
+  );
+
+  const maxA = Math.max(...merged.map(r => r.errors_a), 1);
+
+  return (
+    <div style={{ overflowX: "auto" }}>
+      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <thead>
+          <tr>
+            <th style={GA4_STYLES.tableHeader}>Page</th>
+            <th style={{ ...GA4_STYLES.tableHeader, textAlign: "right", width: "12%" }}>
+              <span style={{ color: COLOR_A }}>Errors A</span>
+            </th>
+            <th style={{ ...GA4_STYLES.tableHeader, textAlign: "right", width: "12%" }}>
+              <span style={{ color: COLOR_B }}>Errors B</span>
+            </th>
+            <th style={{ ...GA4_STYLES.tableHeader, textAlign: "right", width: "8%" }}>Δ</th>
+            <th style={{ ...GA4_STYLES.tableHeader, textAlign: "right", width: "12%" }}>
+              <span style={{ color: COLOR_A }}>Sessions A</span>
+            </th>
+            <th style={{ ...GA4_STYLES.tableHeader, textAlign: "right", width: "12%" }}>
+              <span style={{ color: COLOR_B }}>Sessions B</span>
+            </th>
+            <th style={{ ...GA4_STYLES.tableHeader, width: "16%" }}>A vs B</th>
+          </tr>
+        </thead>
+        <tbody>
+          {merged.slice(0, 15).map((row, idx) => {
+            const diff = row.errors_a > 0 ? ((row.errors_b - row.errors_a) / row.errors_a) * 100 : null;
+            const maxAB = Math.max(row.errors_a, row.errors_b, 1);
+            return (
+              <tr key={idx}
+                style={{ background: idx % 2 === 0 ? "transparent" : "rgba(255,255,255,0.02)" }}
+                onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.05)")}
+                onMouseLeave={e => (e.currentTarget.style.background = idx % 2 === 0 ? "transparent" : "rgba(255,255,255,0.02)")}
+              >
+                <td style={{ ...GA4_STYLES.tableCell, maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.page}</td>
+                <td style={{ ...GA4_STYLES.tableCell, textAlign: "right", color: COLOR_A, fontWeight: 500 }}>{row.errors_a.toLocaleString()}</td>
+                <td style={{ ...GA4_STYLES.tableCell, textAlign: "right", color: COLOR_B, fontWeight: 500 }}>{row.errors_b.toLocaleString()}</td>
+                <td style={{ ...GA4_STYLES.tableCell, textAlign: "right" }}>
+                  {diff !== null ? (
+                    <span style={{
+                      fontSize: 11, fontWeight: 600, padding: "1px 6px", borderRadius: 8,
+                      background: diff >= 0 ? "#fce8e6" : "#e6f4ea",
+                      color: diff >= 0 ? "#c0392b" : "#2d7a3a",
+                    }}>{diff >= 0 ? "+" : ""}{diff.toFixed(0)}%</span>
+                  ) : "—"}
+                </td>
+                <td style={{ ...GA4_STYLES.tableCell, textAlign: "right", color: COLOR_A }}>{row.sessions_a.toLocaleString()}</td>
+                <td style={{ ...GA4_STYLES.tableCell, textAlign: "right", color: COLOR_B }}>{row.sessions_b.toLocaleString()}</td>
+                <td style={{ ...GA4_STYLES.tableCell, paddingRight: 12 }}>
+                  <div style={{ height: 14, width: "100%", background: "rgba(255,255,255,0.06)", borderRadius: 3, overflow: "hidden", position: "relative" }}>
+                    <div style={{ position: "absolute", top: 0, left: 0, height: "50%", width: `${(row.errors_a / maxAB) * 100}%`, background: COLOR_A, opacity: 0.7 }} />
+                    <div style={{ position: "absolute", bottom: 0, left: 0, height: "50%", width: `${(row.errors_b / maxAB) * 100}%`, background: COLOR_B, opacity: 0.7 }} />
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
