@@ -7,7 +7,7 @@
   "app": {
     "id": "my.user.session.analytics",
     "name": "User Session Analytics",
-    "version": "2.7.5",
+    "version": "2.8.0",
     "icon": "./icon.svg",
     "description": "User session analytics dashboard powered by Dynatrace Gen 3 Grail data",
     "scopes": [
