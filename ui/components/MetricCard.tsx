@@ -15,9 +15,12 @@ interface MetricCardProps {
   loading?: boolean;
   invertChange?: boolean;    // true = lower is better (e.g. bounce rate)
   subtitle?: string;         // small text below the value
+  compareValue?: string | number;
+  compareLabel?: string;
+  compareLabelB?: string;
 }
 
-export function MetricCard({ label, value, change, suffix, loading, invertChange, subtitle }: MetricCardProps) {
+export function MetricCard({ label, value, change, suffix, loading, invertChange, subtitle, compareValue, compareLabel, compareLabelB }: MetricCardProps) {
   const isPositive = invertChange ? (change ?? 0) < 0 : (change ?? 0) >= 0;
 
   return (
@@ -42,6 +45,12 @@ export function MetricCard({ label, value, change, suffix, loading, invertChange
       )}
       {subtitle && !loading && (
         <div style={{ fontSize: 10, color: GA4_COLORS.textTertiary, marginTop: 2 }}>{subtitle}</div>
+      )}
+      {compareValue !== undefined && !loading && (
+        <div style={{ fontSize: 11, color: GA4_COLORS.textSecondary, marginTop: 4 }}>
+          {compareLabel && <span style={{ color: "#1a73e8", marginRight: 4 }}>{compareLabel}: {typeof value === "number" ? formatNumber(value) : value}</span>}
+          {compareLabelB && <span style={{ color: "#e03e2d" }}>{compareLabelB}: {typeof compareValue === "number" ? formatNumber(compareValue) : compareValue}</span>}
+        </div>
       )}
     </div>
   );

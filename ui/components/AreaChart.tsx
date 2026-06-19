@@ -26,6 +26,8 @@ interface AreaChartProps {
   label?:      string;
   formatY?:    (v: number) => string;
   thresholds?: ChartThreshold[];
+  dataB?:      TimeSeriesPoint[];
+  labelB?:     string;
 }
 
 export function AreaChart({
@@ -35,6 +37,8 @@ export function AreaChart({
   label = "",
   formatY = defaultFormat,
   thresholds = [],
+  dataB,
+  labelB,
 }: AreaChartProps) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -147,6 +151,23 @@ export function AreaChart({
         strokeLinecap="round" strokeLinejoin="round"
       />
 
+      {/* Compare line (dataB) */}
+      {dataB && dataB.length > 0 && (() => {
+        const pointsB = dataB.map((d, i) => ({
+          x: padding.left + (i / Math.max(dataB.length - 1, 1)) * innerW,
+          y: padding.top + (1 - (d.value - minVal) / range) * innerH,
+        }));
+        const linePathB = pointsB.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
+        return (
+          <path
+            d={linePathB}
+            fill="none" stroke="#e03e2d" strokeWidth={2}
+            strokeLinecap="round" strokeLinejoin="round"
+            strokeDasharray="6 3"
+          />
+        );
+      })()}
+
       {/* Hover indicator */}
       {hoverIdx !== null && points[hoverIdx] && (
         <>
@@ -184,6 +205,16 @@ export function AreaChart({
           fontFamily={GA4_FONTS.family}
         >
           {label}
+        </text>
+      )}
+      {labelB && (
+        <text
+          x={padding.left + 100} y={14}
+          fontSize={12} fontWeight={500}
+          fill="#e03e2d"
+          fontFamily={GA4_FONTS.family}
+        >
+          {labelB}
         </text>
       )}
     </svg>
