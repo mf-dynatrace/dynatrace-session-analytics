@@ -59,15 +59,19 @@ const TOP_PAGES  = 8;      // number of page categories to show
 
 // ── Utility: classify referrer domain ────────────────────────────────────────
 
+function isDomain(host: string, target: string): boolean {
+  return host === target || host.endsWith("." + target);
+}
+
 function classifyReferrer(domain: string | null | undefined): string {
   if (!domain || domain.trim() === "") return "Direct";
-  const d = domain.toLowerCase();
-  if (d.includes("google") || d.includes("bing") || d.includes("yahoo") ||
-      d.includes("duckduckgo") || d.includes("ecosia") || d.includes("yandex"))
+  const d = domain.toLowerCase().replace(/^www\./, "");
+  if (isDomain(d, "google.com") || isDomain(d, "bing.com") || isDomain(d, "yahoo.com") ||
+      isDomain(d, "duckduckgo.com") || isDomain(d, "ecosia.org") || isDomain(d, "yandex.com"))
     return "Organic Search";
-  if (d.includes("facebook") || d.includes("instagram") || d.includes("twitter") ||
-      d.includes("x.com") || d.includes("linkedin") || d.includes("tiktok") ||
-      d.includes("pinterest") || d.includes("snapchat") || d.includes("youtube"))
+  if (isDomain(d, "facebook.com") || isDomain(d, "instagram.com") || isDomain(d, "twitter.com") ||
+      isDomain(d, "x.com") || isDomain(d, "linkedin.com") || isDomain(d, "tiktok.com") ||
+      isDomain(d, "pinterest.com") || isDomain(d, "snapchat.com") || isDomain(d, "youtube.com"))
     return "Social";
   return "Referral";
 }
