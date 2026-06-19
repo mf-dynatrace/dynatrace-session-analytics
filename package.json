@@ -25,7 +25,7 @@
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
     "dt-app": "^1.10.2",
-    "typescript": "^5.3.0"
+    "typescript": "^6.0.3"
   },
   "overrides": {
     "fast-uri": "^3.1.2",
