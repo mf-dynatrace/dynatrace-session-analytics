@@ -12,7 +12,7 @@
     "@dynatrace-sdk/client-app-settings-v2": "^1.1.3",
     "@dynatrace-sdk/client-query": "^1.0.0",
     "@dynatrace/strato-components": "^1.0.0",
-    "@dynatrace/strato-components-preview": "^1.0.0",
+    "@dynatrace/strato-components-preview": "^3.4.1",
     "@dynatrace/strato-design-tokens": "^1.0.0",
     "@dynatrace/strato-icons": "^1.0.0",
     "d3-sankey": "^0.12.3",
