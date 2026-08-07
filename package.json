@@ -11,7 +11,7 @@
     "@dynatrace-sdk/app-utils": "^1.0.0",
     "@dynatrace-sdk/client-app-settings-v2": "^1.1.3",
     "@dynatrace-sdk/client-query": "^1.0.0",
-    "@dynatrace/strato-components": "^1.0.0",
+    "@dynatrace/strato-components": "^3.10.1",
     "@dynatrace/strato-components-preview": "^1.0.0",
     "@dynatrace/strato-design-tokens": "^1.0.0",
     "@dynatrace/strato-icons": "^1.0.0",
